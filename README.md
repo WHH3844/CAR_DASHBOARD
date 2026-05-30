@@ -78,6 +78,8 @@
 
 项目采用轻量 AUTOSAR-like 分层设计：
 
+![CAR_DASHBOARD 软件架构图](Docs/software_architecture_imagegen.png)
+
 ```text
 ┌────────────────────────────────────┐
 │ APP                                │
