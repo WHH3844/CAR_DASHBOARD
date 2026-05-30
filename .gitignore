@@ -1,0 +1,15 @@
+*.o
+*.d
+*.crf
+*.htm
+*.dep
+*.lnp
+*.axf
+*.sct
+*.hex
+*.build_log.htm
+*.uvoptx
+*.uvguix.
+Objects/
+Listings/
+OBJ/
