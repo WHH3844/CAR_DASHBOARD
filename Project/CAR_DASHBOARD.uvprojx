@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>GD32F470</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..\App\Dashboard;..\App\Diag;..\App\Display;..\App\Key;..\App\Logger;..\App\Power;..\App\Sensor;..\Bsw\Communication\CanIf;..\Bsw\Communication\CanSM;..\Bsw\Communication\CanTp;..\Bsw\Communication\CanTrcv;..\Bsw\Communication\Com;..\Bsw\Communication\PduR;..\Bsw\Communication\UartIf;..\Bsw\EcuAbstraction\BacklightIf;..\Bsw\EcuAbstraction\BuzzerIf;..\Bsw\EcuAbstraction\IoHwAb;..\Bsw\EcuAbstraction\LcdIf;..\Bsw\EcuAbstraction\PowerIf;..\Bsw\EcuAbstraction\RtcIf;..\Bsw\EcuAbstraction\SdramIf;..\Bsw\EcuAbstraction\SensorIf;..\Bsw\Memory\Eep;..\Bsw\Memory\FatFsIf;..\Bsw\Memory\MemIf;..\Bsw\Memory\SdIf;..\Bsw\Memory\SdramMgr;..\Bsw\Services\BswM;..\Bsw\Services\Crc;..\Bsw\Services\Dcm;..\Bsw\Services\Dem;..\Bsw\Services\Det;..\Bsw\Services\EcuM;..\Bsw\Services\LogM;..\Bsw\Services\NvM;..\Config;..\Firmware\CMSIS;..\Firmware\CMSIS\GD\GD32F4xx\Include;..\Firmware\GD32F4xx_standard_peripheral\Include;..\Mcal\Can;..\Mcal\Dio;..\Mcal\Exmc;..\Mcal\I2c;..\Mcal\LcdTli;..\Mcal\Mcu;..\Mcal\Port;..\Mcal\Pwm;..\Mcal\Sdio;..\Mcal\Tim;..\Mcal\Uart;..\Mcal\Wdg;..\Os;..\Rte;..\Stub;..\Test\01_power_hold_test;..\Test\02_uart_led_test;..\Test\03_sdram_test;..\Test\04_lcd_color_test;..\Test\05_can_loop_test;..\Test\06_i2c_scan_test;..\Test\07_eeprom_test;..\Test\08_rtc_test;..\Test\09_sht30_test;..\Test\10_tf_card_test;..\Test\11_key_buzzer_test;..\Test\12_dashboard_demo</IncludePath>
+              <IncludePath>..;..\App\Dashboard;..\App\Diag;..\App\Display;..\App\Key;..\App\Logger;..\App\Power;..\App\Sensor;..\Bsw\Communication\CanIf;..\Bsw\Communication\CanSM;..\Bsw\Communication\CanTp;..\Bsw\Communication\CanTrcv;..\Bsw\Communication\Com;..\Bsw\Communication\PduR;..\Bsw\Communication\UartIf;..\Bsw\EcuAbstraction\BacklightIf;..\Bsw\EcuAbstraction\BuzzerIf;..\Bsw\EcuAbstraction\IoHwAb;..\Bsw\EcuAbstraction\LcdIf;..\Bsw\EcuAbstraction\PowerIf;..\Bsw\EcuAbstraction\RtcIf;..\Bsw\EcuAbstraction\SdramIf;..\Bsw\EcuAbstraction\SensorIf;..\Bsw\Memory\Eep;..\Bsw\Memory\FatFsIf;..\Bsw\Memory\MemIf;..\Bsw\Memory\SdIf;..\Bsw\Memory\SdramMgr;..\Bsw\Services\BswM;..\Bsw\Services\Crc;..\Bsw\Services\Dcm;..\Bsw\Services\Dem;..\Bsw\Services\Det;..\Bsw\Services\EcuM;..\Bsw\Services\LogM;..\Bsw\Services\NvM;..\Config;..\Firmware\CMSIS;..\Firmware\CMSIS\GD\GD32F4xx\Include;..\Firmware\GD32F4xx_standard_peripheral\Include;..\Mcal\Can;..\Mcal\Dio;..\Mcal\Exmc;..\Mcal\I2c;..\Mcal\LcdTli;..\Mcal\LcdSpi;..\Mcal\Mcu;..\Mcal\Port;..\Mcal\Pwm;..\Mcal\Sdio;..\Mcal\Tim;..\Mcal\Uart;..\Mcal\Wdg;..\Os;..\Rte;..\Stub;..\Test\01_power_hold_test;..\Test\02_uart_led_test;..\Test\03_sdram_test;..\Test\04_lcd_color_test;..\Test\05_can_loop_test;..\Test\06_i2c_scan_test;..\Test\07_eeprom_test;..\Test\08_rtc_test;..\Test\09_sht30_test;..\Test\10_tf_card_test;..\Test\11_key_buzzer_test;..\Test\12_dashboard_demo</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -925,6 +925,16 @@
               <FilePath>..\Mcal\LcdTli\LcdTli.h</FilePath>
             </File>
             <File>
+              <FileName>LcdSpi.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Mcal\LcdSpi\LcdSpi.c</FilePath>
+            </File>
+            <File>
+              <FileName>LcdSpi.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Mcal\LcdSpi\LcdSpi.h</FilePath>
+            </File>
+            <File>
               <FileName>Wdg.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Mcal\Wdg\Wdg.c</FilePath>
@@ -1000,6 +1010,11 @@
               <FilePath>..\Config\App_Cfg.h</FilePath>
             </File>
             <File>
+              <FileName>board_pins.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Config\board_pins.h</FilePath>
+            </File>
+            <File>
               <FileName>gd32f4xx_libopt.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Config\gd32f4xx_libopt.h</FilePath>
@@ -1065,9 +1080,19 @@
               <FilePath>..\Test\02_uart_led_test\02_uart_led_test.c</FilePath>
             </File>
             <File>
+              <FileName>uart_led_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\02_uart_led_test\uart_led_test.h</FilePath>
+            </File>
+            <File>
               <FileName>03_sdram_test.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Test\03_sdram_test\03_sdram_test.c</FilePath>
+            </File>
+            <File>
+              <FileName>sdram_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\03_sdram_test\sdram_test.h</FilePath>
             </File>
             <File>
               <FileName>04_lcd_color_test.c</FileName>
@@ -1075,9 +1100,19 @@
               <FilePath>..\Test\04_lcd_color_test\04_lcd_color_test.c</FilePath>
             </File>
             <File>
+              <FileName>lcd_color_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\04_lcd_color_test\lcd_color_test.h</FilePath>
+            </File>
+            <File>
               <FileName>05_can_loop_test.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Test\05_can_loop_test\05_can_loop_test.c</FilePath>
+            </File>
+            <File>
+              <FileName>can_loop_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\05_can_loop_test\can_loop_test.h</FilePath>
             </File>
             <File>
               <FileName>06_i2c_scan_test.c</FileName>
@@ -1085,9 +1120,19 @@
               <FilePath>..\Test\06_i2c_scan_test\06_i2c_scan_test.c</FilePath>
             </File>
             <File>
+              <FileName>i2c_scan_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\06_i2c_scan_test\i2c_scan_test.h</FilePath>
+            </File>
+            <File>
               <FileName>07_eeprom_test.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Test\07_eeprom_test\07_eeprom_test.c</FilePath>
+            </File>
+            <File>
+              <FileName>eeprom_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\07_eeprom_test\eeprom_test.h</FilePath>
             </File>
             <File>
               <FileName>08_rtc_test.c</FileName>
@@ -1095,9 +1140,19 @@
               <FilePath>..\Test\08_rtc_test\08_rtc_test.c</FilePath>
             </File>
             <File>
+              <FileName>rtc_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\08_rtc_test\rtc_test.h</FilePath>
+            </File>
+            <File>
               <FileName>09_sht30_test.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Test\09_sht30_test\09_sht30_test.c</FilePath>
+            </File>
+            <File>
+              <FileName>sht30_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\09_sht30_test\sht30_test.h</FilePath>
             </File>
             <File>
               <FileName>10_tf_card_test.c</FileName>
@@ -1105,14 +1160,29 @@
               <FilePath>..\Test\10_tf_card_test\10_tf_card_test.c</FilePath>
             </File>
             <File>
+              <FileName>tf_card_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\10_tf_card_test\tf_card_test.h</FilePath>
+            </File>
+            <File>
               <FileName>11_key_buzzer_test.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Test\11_key_buzzer_test\11_key_buzzer_test.c</FilePath>
             </File>
             <File>
+              <FileName>key_buzzer_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\11_key_buzzer_test\key_buzzer_test.h</FilePath>
+            </File>
+            <File>
               <FileName>12_dashboard_demo.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Test\12_dashboard_demo\12_dashboard_demo.c</FilePath>
+            </File>
+            <File>
+              <FileName>dashboard_demo_test.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Test\12_dashboard_demo\dashboard_demo_test.h</FilePath>
             </File>
           </Files>
         </Group>
