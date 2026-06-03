@@ -1,4 +1,4 @@
-#include "Rte_Signal.h"
+﻿#include "Rte_Signal.h"
 
 #include "Can_Cfg.h"
 #include "Rte_Cfg.h"
@@ -14,6 +14,10 @@ static uint32_t Rte_LastBodyRxTick;
 
 void Rte_Signal_Init(void)
 {
+    /*
+     * 所有 RTE 信号都初始化为“安全且可显示”的默认值：
+     * 数值为 0，有效位为 0，背光使用配置默认值，RTC 给一个固定日期但标记 invalid。
+     */
     Rte_DashboardData.vehicle_speed_kph_x10 = 0u;
     Rte_DashboardData.engine_rpm = 0u;
     Rte_DashboardData.fuel_percent = 0u;
@@ -63,6 +67,10 @@ Std_ReturnType Rte_Write_Powertrain(uint16_t speed_kph_x10,
     Rte_DashboardData.outdoor_temp_c = outdoor_temp_c;
     Rte_DashboardData.battery_mv = battery_mv;
     Rte_DashboardData.can_ems_valid = 1u;
+    /*
+     * tick_ms 是这帧动力域数据进入 RTE 的时间，后续超时判断只看这个时间戳，
+     * 不依赖 Com 的内部调度状态。
+     */
     Rte_LastPowertrainRxTick = tick_ms;
     return E_OK;
 }
@@ -76,6 +84,7 @@ Std_ReturnType Rte_Write_BodyStatus(uint8_t ignition_status,
     Rte_DashboardData.gear_position = gear_position;
     Rte_DashboardData.warning_flags = warning_flags;
     Rte_DashboardData.can_body_valid = 1u;
+    /* 车身报文单独记录接收时间，避免动力域和车身域互相影响有效位判断。 */
     Rte_LastBodyRxTick = tick_ms;
     return E_OK;
 }
@@ -114,6 +123,7 @@ Std_ReturnType Rte_Write_BacklightLevel(uint8_t level)
 {
     if (level > 100u)
     {
+        /* RTE 层先做一次钳位，避免异常配置继续向 BacklightIf 传播。 */
         level = 100u;
     }
 
@@ -151,6 +161,10 @@ void Rte_Update_CanValidity(uint32_t tick_ms)
     if ((Rte_DashboardData.can_ems_valid != 0u) &&
         ((tick_ms - Rte_LastPowertrainRxTick) > CAN_CFG_EMS_POWERTRAIN_TIMEOUT_MS))
     {
+        /*
+         * 使用无符号减法计算超时，tick_ms 回绕时仍能得到正确的时间差语义。
+         * 超时只清 valid 位，不清最后一次数值，显示层可继续显示旧值并提示 CAN LOST。
+         */
         Rte_DashboardData.can_ems_valid = 0u;
     }
 
@@ -214,6 +228,10 @@ Std_ReturnType Rte_Take_KeyEvent(Rte_KeyEventType *event)
     }
 
     *event = Rte_KeyEvent;
+    /*
+     * Take 语义用于边沿事件：读出后立即清空。
+     * 如果业务只想观察当前槽位而不消费，应调用 Rte_Read_KeyEvent()。
+     */
     Rte_KeyEvent = RTE_KEY_EVENT_NONE;
     return E_OK;
 }
@@ -237,254 +255,4 @@ uint32_t Rte_GetLastPowertrainRxTick(void)
 uint8_t Rte_IsPowertrainValid(void)
 {
     return Rte_DashboardData.can_ems_valid;
-}
-#include "Rte_Signal.h"
-
-#include "Can_Cfg.h"
-#include "Rte_Cfg.h"
-
-static Rte_DashboardDataType Rte_Data;
-static uint16_t Rte_CanEmsAgeMs;
-static uint16_t Rte_SensorAgeMs;
-static uint16_t Rte_RtcAgeMs;
-
-static uint16_t Rte_AddAge(uint16_t age, uint16_t elapsed_ms)
-{
-    uint32_t next;
-
-    next = (uint32_t)age + elapsed_ms;
-    if (next > RTE_CFG_SIGNAL_AGE_SATURATION_MS)
-    {
-        next = RTE_CFG_SIGNAL_AGE_SATURATION_MS;
-    }
-
-    return (uint16_t)next;
-}
-
-void Rte_SignalInit(void)
-{
-    Rte_Data.speed_kph_x10 = 0u;
-    Rte_Data.engine_rpm = 0u;
-    Rte_Data.fuel_percent = 0u;
-    Rte_Data.coolant_temp_c = 0;
-    Rte_Data.outdoor_temp_c = 0;
-    Rte_Data.battery_mv = 0u;
-    Rte_Data.ignition_status = 0u;
-    Rte_Data.gear_position = 0u;
-    Rte_Data.warning_flags = 0u;
-    Rte_Data.door_flags = 0u;
-    Rte_Data.config_theme = 0u;
-    Rte_Data.backlight_level = RTE_CFG_DEFAULT_BACKLIGHT_LEVEL;
-    Rte_Data.sht30_temp_c_x10 = 0;
-    Rte_Data.sht30_humidity_x10 = 0u;
-    Rte_Data.rtc_time.year = 2026u;
-    Rte_Data.rtc_time.month = 6u;
-    Rte_Data.rtc_time.date = 1u;
-    Rte_Data.rtc_time.weekday = 3u;
-    Rte_Data.rtc_time.hour = 0u;
-    Rte_Data.rtc_time.minute = 0u;
-    Rte_Data.rtc_time.second = 0u;
-    Rte_Data.key_event = 0u;
-    Rte_Data.buzzer_enable = RTE_CFG_DEFAULT_BUZZER_ENABLE;
-    Rte_Data.buzzer_alarm = 0u;
-    Rte_Data.can_ems_valid = 0u;
-    Rte_Data.sensor_valid = 0u;
-    Rte_Data.rtc_valid = 0u;
-    Rte_CanEmsAgeMs = RTE_CFG_SIGNAL_AGE_SATURATION_MS;
-    Rte_SensorAgeMs = RTE_CFG_SIGNAL_AGE_SATURATION_MS;
-    Rte_RtcAgeMs = RTE_CFG_SIGNAL_AGE_SATURATION_MS;
-}
-
-void Rte_SignalMainFunction(uint16_t elapsed_ms)
-{
-    Rte_CanEmsAgeMs = Rte_AddAge(Rte_CanEmsAgeMs, elapsed_ms);
-    Rte_SensorAgeMs = Rte_AddAge(Rte_SensorAgeMs, elapsed_ms);
-    Rte_RtcAgeMs = Rte_AddAge(Rte_RtcAgeMs, elapsed_ms);
-
-    Rte_Data.can_ems_valid = (Rte_CanEmsAgeMs <= CAN_CFG_EMS_POWERTRAIN_TIMEOUT_MS) ? 1u : 0u;
-    Rte_Data.sensor_valid = (Rte_SensorAgeMs <= 3000u) ? 1u : 0u;
-    Rte_Data.rtc_valid = (Rte_RtcAgeMs <= 3000u) ? 1u : 0u;
-}
-
-Std_ReturnType Rte_Write_VehicleSpeed(uint16_t speed_kph_x10)
-{
-    Rte_Data.speed_kph_x10 = speed_kph_x10;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_EngineRpm(uint16_t rpm)
-{
-    Rte_Data.engine_rpm = rpm;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_FuelPercent(uint8_t fuel_percent)
-{
-    Rte_Data.fuel_percent = (fuel_percent > 100u) ? 100u : fuel_percent;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_CoolantTemp(int16_t temp_c)
-{
-    Rte_Data.coolant_temp_c = temp_c;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_OutdoorTemp(int16_t temp_c)
-{
-    Rte_Data.outdoor_temp_c = temp_c;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_BatteryVoltage(uint16_t battery_mv)
-{
-    Rte_Data.battery_mv = battery_mv;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_IgnitionStatus(uint8_t ignition_status)
-{
-    Rte_Data.ignition_status = ignition_status;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_GearPosition(uint8_t gear_position)
-{
-    Rte_Data.gear_position = gear_position;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_WarningFlags(uint8_t warning_flags)
-{
-    Rte_Data.warning_flags = warning_flags;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_DoorFlags(uint8_t door_flags)
-{
-    Rte_Data.door_flags = door_flags;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_ConfigTheme(uint8_t theme)
-{
-    Rte_Data.config_theme = theme;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_BacklightLevel(uint8_t level)
-{
-    Rte_Data.backlight_level = (level > 100u) ? 100u : level;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_Sht30(int16_t temp_c_x10, uint16_t humidity_x10)
-{
-    Rte_Data.sht30_temp_c_x10 = temp_c_x10;
-    Rte_Data.sht30_humidity_x10 = humidity_x10;
-    Rte_Data.sensor_valid = 1u;
-    Rte_SensorAgeMs = 0u;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_RtcTime(const RtcIf_TimeType *time)
-{
-    if (time == 0)
-    {
-        return E_NOT_OK;
-    }
-
-    Rte_Data.rtc_time = *time;
-    Rte_Data.rtc_valid = 1u;
-    Rte_RtcAgeMs = 0u;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_KeyEvent(uint8_t key_event)
-{
-    Rte_Data.key_event = key_event;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_BuzzerEnable(uint8_t enable)
-{
-    Rte_Data.buzzer_enable = (enable != 0u) ? 1u : 0u;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Write_BuzzerAlarm(uint8_t alarm)
-{
-    Rte_Data.buzzer_alarm = (alarm != 0u) ? 1u : 0u;
-    return E_OK;
-}
-
-void Rte_MarkCanEmsReceived(void)
-{
-    Rte_CanEmsAgeMs = 0u;
-    Rte_Data.can_ems_valid = 1u;
-}
-
-Std_ReturnType Rte_Read_DashboardData(Rte_DashboardDataType *data)
-{
-    if (data == 0)
-    {
-        return E_NOT_OK;
-    }
-
-    *data = Rte_Data;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Read_VehicleSpeed(uint16_t *speed_kph_x10)
-{
-    if (speed_kph_x10 == 0)
-    {
-        return E_NOT_OK;
-    }
-
-    *speed_kph_x10 = Rte_Data.speed_kph_x10;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Read_EngineRpm(uint16_t *rpm)
-{
-    if (rpm == 0)
-    {
-        return E_NOT_OK;
-    }
-
-    *rpm = Rte_Data.engine_rpm;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Read_BatteryVoltage(uint16_t *battery_mv)
-{
-    if (battery_mv == 0)
-    {
-        return E_NOT_OK;
-    }
-
-    *battery_mv = Rte_Data.battery_mv;
-    return E_OK;
-}
-
-Std_ReturnType Rte_Read_RtcTime(RtcIf_TimeType *time)
-{
-    if (time == 0)
-    {
-        return E_NOT_OK;
-    }
-
-    *time = Rte_Data.rtc_time;
-    return E_OK;
-}
-
-uint16_t Rte_GetCanEmsAgeMs(void)
-{
-    return Rte_CanEmsAgeMs;
-}
-
-uint8_t Rte_IsCanEmsValid(void)
-{
-    return Rte_Data.can_ems_valid;
 }

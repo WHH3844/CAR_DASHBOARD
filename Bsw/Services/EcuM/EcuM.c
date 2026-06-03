@@ -33,6 +33,10 @@ static uint32_t EcuM_NextLoggerMs;
 
 static void EcuM_BootPowerHold(void)
 {
+    /*
+     * 上电早期必须先保持电源自锁，否则用户松开电源键后整机可能掉电。
+     * 不同硬件调试阶段可通过 POWERIF_WAIT_KEY_WHEN_NOT_PRESSED 选择是否等待按键。
+     */
 #if POWERIF_WAIT_KEY_WHEN_NOT_PRESSED
     if (PowerIf_BootCheckAndHold() == 0u)
     {
@@ -45,17 +49,22 @@ static void EcuM_BootPowerHold(void)
     }
 #else
     (void)PowerIf_BootCheckAndHold();
+    PowerIf_HoldOn();
 #endif
 
+    /*
+     * 等待用户松开电源键，给 App_Power 的运行期长按关机逻辑一个干净起点。
+     * 超时后继续启动，避免按键异常导致系统永久卡在启动阶段。
+     */
     (void)PowerIf_WaitKeyRelease(1500u);
 }
 
 static void EcuM_InitHardwarePath(void)
 {
     /*
-     * 初始化顺序来自 README/开发文档：
-     * 先保证电源保持和日志，再初始化 EEPROM/NvM/Dem，
-     * 然后 SDRAM -> LCD，最后通信与 APP。
+     * 初始化顺序来自前期 bring-up 经验：
+     * 先保证 RTE/NvM/Dem 基础服务可用，再初始化 SDRAM 和 LCD，
+     * 最后再启动 CAN、诊断和 APP。LCD framebuffer 必须等 SDRAM 成功后才能用。
      */
     Rte_Init();
     NvM_Init();
@@ -75,6 +84,10 @@ static void EcuM_InitHardwarePath(void)
 
     BacklightIf_Init();
     BuzzerIf_Init();
+    /*
+     * 通信栈初始化顺序从上层服务到下层控制器都可以工作；
+     * 这里先初始化 Dcm/CanTp/Com 的 RAM 状态，再启动 CanIf/CanSM 监控硬件。
+     */
     Dcm_Init();
     CanTp_Init();
     Com_Init();
@@ -84,6 +97,10 @@ static void EcuM_InitHardwarePath(void)
 
 static void EcuM_InitApps(void)
 {
+    /*
+     * APP 初始化放在 BSW/RTE/硬件抽象之后。
+     * 例如 App_Display 需要 LCD ready，App_Dashboard 需要 NvM 配置已经读入。
+     */
     App_Power_Init();
     App_Key_Init();
     App_Dashboard_Init();
@@ -115,7 +132,12 @@ void EcuM_Init(void)
 
     EcuM_InitApps();
     EcuM_State = ECUM_STATE_RUN;
-    LogM_Info("EcuM enter RUN");
+
+#if APP_CFG_USE_FREERTOS != 0u
+    LogM_Info("EcuM enter RUN, FreeRTOS enabled");
+#else
+    LogM_Info("EcuM enter RUN, bare loop enabled");
+#endif
 }
 
 static void EcuM_Shutdown(void)
@@ -133,11 +155,24 @@ static void EcuM_Shutdown(void)
 
 void EcuM_MainFunction(void)
 {
+#if APP_CFG_USE_FREERTOS != 0u
+    /*
+     * FreeRTOS 模式下系统时间来自 RTOS tick。
+     * 裸机模式下由 Os_Start() 在每次 busy-wait 后调用 EcuM_AdvanceTick()。
+     */
+    EcuM_TickMs = Os_GetTickMs();
+#endif
+
     if (EcuM_State != ECUM_STATE_RUN)
     {
+        /* 非 RUN 状态不调度业务，避免初始化失败后继续访问未就绪硬件。 */
         return;
     }
 
+    /*
+     * 先跑通信/诊断，再跑应用层。
+     * 这样本周期刚收到的 CAN/UDS 数据可以尽快写入 RTE 并被 APP 使用。
+     */
     CanIf_MainFunction(EcuM_TickMs);
     CanSM_MainFunction(EcuM_TickMs);
     Com_MainFunction(EcuM_TickMs);
@@ -151,12 +186,17 @@ void EcuM_MainFunction(void)
 
     if (EcuM_TickMs >= EcuM_NextDisplayMs)
     {
+        /*
+         * LCD 刷新成本明显高于普通逻辑任务，按较低频率调度。
+         * RTE 中的数据仍然每 10ms 更新，显示只取最近快照。
+         */
         EcuM_NextDisplayMs = EcuM_TickMs + APP_CFG_DISPLAY_PERIOD_MS;
         App_Display_MainFunction(EcuM_TickMs);
     }
 
     if (EcuM_TickMs >= EcuM_NextNvMMs)
     {
+        /* NvM/Dem 放在同一个较慢周期，减少 EEPROM 访问和主循环抖动。 */
         EcuM_NextNvMMs = EcuM_TickMs + APP_CFG_NVM_PERIOD_MS;
         NvM_MainFunction(EcuM_TickMs);
         Dem_MainFunction(EcuM_TickMs);
@@ -170,6 +210,7 @@ void EcuM_MainFunction(void)
 
     if (App_Power_IsShutdownRequested() != 0u)
     {
+        /* 关机请求只由 EcuM 执行，保证保存和断电顺序集中在一个地方。 */
         App_Power_ClearShutdownRequest();
         EcuM_Shutdown();
     }
@@ -177,12 +218,17 @@ void EcuM_MainFunction(void)
 
 void EcuM_MainLoop(void)
 {
-    while (1)
-    {
-        EcuM_MainFunction();
-        Os_DelayMs(APP_CFG_MAIN_LOOP_MS);
-        EcuM_TickMs += APP_CFG_MAIN_LOOP_MS;
-    }
+    /*
+     * EcuM 只负责 ECU 生命周期，真正“怎么调度”交给 Os。
+     * APP_CFG_USE_FREERTOS=1 时 Os_Start() 会创建 FreeRTOS 任务；
+     * APP_CFG_USE_FREERTOS=0 时 Os_Start() 会回退到裸机 while(1)。
+     */
+    Os_Start();
+}
+
+void EcuM_AdvanceTick(uint32_t elapsed_ms)
+{
+    EcuM_TickMs += elapsed_ms;
 }
 
 EcuM_StateType EcuM_GetState(void)
@@ -193,195 +239,4 @@ EcuM_StateType EcuM_GetState(void)
 uint32_t EcuM_GetTickMs(void)
 {
     return EcuM_TickMs;
-}
-#include "EcuM.h"
-
-#include "App_Cfg.h"
-#include "App_Dashboard.h"
-#include "App_Diag.h"
-#include "App_Display.h"
-#include "App_Key.h"
-#include "App_Logger.h"
-#include "App_Power.h"
-#include "App_Sensor.h"
-#include "BswM.h"
-#include "CanIf.h"
-#include "CanSM.h"
-#include "CanTp.h"
-#include "Com.h"
-#include "Dem.h"
-#include "Det.h"
-#include "FatFsIf.h"
-#include "LogM.h"
-#include "NvM.h"
-#include "PduR.h"
-#include "PowerIf.h"
-#include "Rte.h"
-#include "Rte_Signal.h"
-#include "SdramIf.h"
-#include "board_pins.h"
-
-static EcuM_StateType EcuM_State;
-static uint16_t EcuM_Timer100Ms;
-static uint16_t EcuM_Timer500Ms;
-static uint16_t EcuM_Timer1000Ms;
-
-static void EcuM_DelayMs(uint32_t ms)
-{
-    uint32_t i;
-
-    while (ms-- != 0u)
-    {
-        for (i = 0u; i < 20000u; i++)
-        {
-            __NOP();
-        }
-    }
-}
-
-static void EcuM_ApplyNvMConfig(void)
-{
-    const NvM_SystemConfigType *config;
-
-    config = NvM_GetSystemConfig();
-    (void)Rte_Write_BacklightLevel(config->backlight_level);
-    (void)Rte_Write_BuzzerEnable(config->buzzer_enable);
-    (void)Rte_Write_ConfigTheme(config->theme);
-}
-
-void EcuM_Init(void)
-{
-    EcuM_State = ECUM_STATE_BOOT;
-
-#if POWERIF_WAIT_KEY_WHEN_NOT_PRESSED
-    if (PowerIf_BootCheckAndHold() == 0u)
-    {
-        if (PowerIf_WaitKeyPressAndHold(0u) == 0u)
-        {
-            while (1)
-            {
-            }
-        }
-    }
-#else
-    (void)PowerIf_BootCheckAndHold();
-    PowerIf_HoldOn();
-#endif
-
-    (void)PowerIf_WaitKeyRelease(1500u);
-
-    LogM_Init();
-    LogM_Info("CAR_DASHBOARD EcuM boot");
-
-    Det_Init();
-    Dem_Init();
-    Rte_Init();
-    NvM_Init();
-    EcuM_ApplyNvMConfig();
-
-    BswM_Init();
-    PduR_Init();
-    CanTp_Init();
-    Com_Init();
-    CanSM_Init();
-    FatFsIf_Init();
-
-    EcuM_State = ECUM_STATE_SELF_TEST;
-    if (SdramIf_Init() != E_OK)
-    {
-        EcuM_State = ECUM_STATE_FAULT;
-        LogM_Error("SDRAM init failed");
-        return;
-    }
-
-    App_Display_Init();
-    App_Key_Init();
-    App_Power_Init();
-    App_Dashboard_Init();
-    App_Diag_Init();
-    App_Sensor_Init();
-    App_Logger_Init();
-
-    (void)CanIf_Init();
-
-    EcuM_Timer100Ms = 0u;
-    EcuM_Timer500Ms = 0u;
-    EcuM_Timer1000Ms = 0u;
-    EcuM_State = ECUM_STATE_RUN;
-    LogM_Info("EcuM entered RUN");
-}
-
-void EcuM_RunSystem10ms(void)
-{
-    Rte_MainFunction(APP_CFG_MAIN_LOOP_MS);
-    App_Power_MainFunction(APP_CFG_MAIN_LOOP_MS);
-    App_Diag_MainFunction(APP_CFG_MAIN_LOOP_MS);
-}
-
-void EcuM_RunCan10ms(void)
-{
-    CanIf_MainFunctionRx();
-    CanIf_MainFunctionBusOff();
-    CanSM_MainFunction();
-    Com_MainFunction(APP_CFG_MAIN_LOOP_MS);
-}
-
-void EcuM_RunApp10ms(void)
-{
-    App_Key_MainFunction(APP_CFG_MAIN_LOOP_MS);
-    App_Dashboard_MainFunction(APP_CFG_MAIN_LOOP_MS);
-}
-
-void EcuM_RunDisplay500ms(void)
-{
-    App_Display_MainFunction();
-}
-
-void EcuM_RunDiagNvM100ms(void)
-{
-    NvM_MainFunction(100u);
-    BswM_MainFunction();
-}
-
-void EcuM_MainFunction(void)
-{
-    if (EcuM_State != ECUM_STATE_RUN)
-    {
-        EcuM_DelayMs(APP_CFG_MAIN_LOOP_MS);
-        return;
-    }
-
-    EcuM_RunSystem10ms();
-    EcuM_RunCan10ms();
-    EcuM_RunApp10ms();
-
-    EcuM_Timer100Ms = (uint16_t)(EcuM_Timer100Ms + APP_CFG_MAIN_LOOP_MS);
-    EcuM_Timer500Ms = (uint16_t)(EcuM_Timer500Ms + APP_CFG_MAIN_LOOP_MS);
-    EcuM_Timer1000Ms = (uint16_t)(EcuM_Timer1000Ms + APP_CFG_MAIN_LOOP_MS);
-
-    if (EcuM_Timer100Ms >= 100u)
-    {
-        EcuM_Timer100Ms = 0u;
-        EcuM_RunDiagNvM100ms();
-    }
-
-    if (EcuM_Timer500Ms >= APP_CFG_DISPLAY_PERIOD_MS)
-    {
-        EcuM_Timer500Ms = 0u;
-        EcuM_RunDisplay500ms();
-    }
-
-    if (EcuM_Timer1000Ms >= APP_CFG_SENSOR_PERIOD_MS)
-    {
-        EcuM_Timer1000Ms = 0u;
-        App_Sensor_MainFunction();
-        App_Logger_MainFunction(1000u);
-    }
-
-    EcuM_DelayMs(APP_CFG_MAIN_LOOP_MS);
-}
-
-EcuM_StateType EcuM_GetState(void)
-{
-    return EcuM_State;
 }

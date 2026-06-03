@@ -1,4 +1,4 @@
-#include "PduR.h"
+﻿#include "PduR.h"
 
 #include "CanTp.h"
 #include "Can_Cfg.h"
@@ -18,52 +18,15 @@ void PduR_RxIndication(const CanIf_PduType *pdu, uint32_t tick_ms)
     if ((pdu->id == CAN_ID_DIAG_FUNCTIONAL_REQ) ||
         (pdu->id == CAN_ID_DIAG_PHYSICAL_REQ))
     {
+        /*
+         * 功能寻址和物理寻址都交给 CanTp。
+         * Dcm 目前没有区分两者的服务权限，但保留 rx_can_id 便于后续扩展。
+         */
         CanTp_RxIndication(pdu, tick_ms);
     }
     else
     {
+        /* 业务报文进入 Com 后再按具体 CAN ID 解信号。 */
         Com_RxIndication(pdu, tick_ms);
     }
-}
-#include "PduR.h"
-
-#include "CanTp.h"
-#include "Com.h"
-#include "Can_Cfg.h"
-
-void PduR_Init(void)
-{
-    /* 当前路由表全是静态 CAN ID，初始化时不需要动态分配资源。 */
-}
-
-void PduR_CanIfRxIndication(const CanIf_PduType *pdu)
-{
-    if (pdu == 0)
-    {
-        return;
-    }
-
-    /*
-     * PduR 只看 PDU ID 并决定交给谁：
-     * - 诊断请求交给 CanTp/Dcm
-     * - 周期业务报文交给 Com 解信号
-     */
-    if ((pdu->id == CAN_ID_DIAG_FUNCTIONAL_REQ) ||
-        (pdu->id == CAN_ID_DIAG_PHYSICAL_REQ))
-    {
-        CanTp_RxIndication(pdu);
-        return;
-    }
-
-    Com_RxIndication(pdu);
-}
-
-Std_ReturnType PduR_ComTransmit(const CanIf_PduType *pdu)
-{
-    return CanIf_Transmit(pdu);
-}
-
-Std_ReturnType PduR_CanTpTransmit(const CanIf_PduType *pdu)
-{
-    return CanIf_Transmit(pdu);
 }

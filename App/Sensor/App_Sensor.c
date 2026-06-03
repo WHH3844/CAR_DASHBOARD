@@ -1,4 +1,4 @@
-#include "App_Sensor.h"
+﻿#include "App_Sensor.h"
 
 #include "Dem.h"
 #include "RtcIf.h"
@@ -12,6 +12,10 @@ static uint32_t App_Sensor_NextShtMs;
 
 void App_Sensor_Init(void)
 {
+    /*
+     * RTC 和 SHT30 是独立外设：一个失败不阻塞另一个。
+     * 初始化结果保存在本地标志位中，周期任务据此决定是否继续访问设备。
+     */
     App_Sensor_RtcOk = RtcIf_Init();
     if (App_Sensor_RtcOk != 0u)
     {
@@ -42,6 +46,10 @@ static void App_Sensor_UpdateRtc(void)
 
     if (RtcIf_ReadTime(&time) != 0u)
     {
+        /*
+         * I2C 通信成功不等于时间可信。
+         * RtcIf_IsTimeValid() 会检查年月日时分秒范围，避免显示无意义时间。
+         */
         if (RtcIf_IsTimeValid(&time) != 0u)
         {
             (void)Rte_Write_RtcTime(&time, 1u);
@@ -72,6 +80,10 @@ static void App_Sensor_UpdateSht30(void)
 
     if (SensorIf_Sht30Read(&sht) != 0u)
     {
+        /*
+         * SensorIf 已经把 SHT30 原始值转换为 x100 定点数。
+         * RTE 保留同样单位，显示层负责格式化为带两位小数的文本。
+         */
         env.temperature_c_x100 = sht.temperature_c_x100;
         env.humidity_rh_x100 = sht.humidity_rh_x100;
         env.valid = 1u;
@@ -92,83 +104,15 @@ void App_Sensor_MainFunction(uint32_t tick_ms)
 {
     if (tick_ms >= App_Sensor_NextRtcMs)
     {
+        /* RTC 秒级刷新即可，过高频率会增加 I2C 总线占用但显示收益很小。 */
         App_Sensor_NextRtcMs = tick_ms + 1000u;
         App_Sensor_UpdateRtc();
     }
 
     if (tick_ms >= App_Sensor_NextShtMs)
     {
+        /* SHT30 温湿度变化较慢，1s 周期兼顾响应速度和总线负载。 */
         App_Sensor_NextShtMs = tick_ms + 1000u;
         App_Sensor_UpdateSht30();
-    }
-}
-#include "App_Sensor.h"
-
-#include "Dem.h"
-#include "RtcIf.h"
-#include "Rte_Signal.h"
-#include "SensorIf.h"
-
-static uint8_t App_SensorRtcOk;
-static uint8_t App_SensorShtOk;
-
-void App_Sensor_Init(void)
-{
-    App_SensorRtcOk = RtcIf_Init();
-    if (App_SensorRtcOk != 0u)
-    {
-        (void)RtcIf_StartOscillator();
-        (void)Dem_SetEventStatus(DEM_EVENT_RTC_COMM_FAILED, DEM_EVENT_STATUS_PASSED);
-    }
-    else
-    {
-        (void)Dem_SetEventStatus(DEM_EVENT_RTC_COMM_FAILED, DEM_EVENT_STATUS_FAILED);
-    }
-
-    App_SensorShtOk = SensorIf_Sht30Init();
-    if (App_SensorShtOk != 0u)
-    {
-        (void)Dem_SetEventStatus(DEM_EVENT_SHT30_COMM_FAILED, DEM_EVENT_STATUS_PASSED);
-    }
-    else
-    {
-        (void)Dem_SetEventStatus(DEM_EVENT_SHT30_COMM_FAILED, DEM_EVENT_STATUS_FAILED);
-    }
-}
-
-void App_Sensor_MainFunction(void)
-{
-    RtcIf_TimeType time;
-    SensorIf_Sht30DataType sht30;
-    int16_t temp_x10;
-    uint16_t hum_x10;
-
-    if (App_SensorRtcOk != 0u)
-    {
-        if ((RtcIf_ReadTime(&time) != 0u) && (RtcIf_IsTimeValid(&time) != 0u))
-        {
-            (void)Rte_Write_RtcTime(&time);
-            (void)Dem_SetEventStatus(DEM_EVENT_RTC_COMM_FAILED, DEM_EVENT_STATUS_PASSED);
-            (void)Dem_SetEventStatus(DEM_EVENT_RTC_TIME_INVALID, DEM_EVENT_STATUS_PASSED);
-        }
-        else
-        {
-            (void)Dem_SetEventStatus(DEM_EVENT_RTC_TIME_INVALID, DEM_EVENT_STATUS_FAILED);
-        }
-    }
-
-    if (App_SensorShtOk != 0u)
-    {
-        if (SensorIf_Sht30Read(&sht30) != 0u)
-        {
-            temp_x10 = (int16_t)(sht30.temperature_c_x100 / 10);
-            hum_x10 = (uint16_t)(sht30.humidity_rh_x100 / 10);
-            (void)Rte_Write_Sht30(temp_x10, hum_x10);
-            (void)Dem_SetEventStatus(DEM_EVENT_SHT30_COMM_FAILED, DEM_EVENT_STATUS_PASSED);
-        }
-        else
-        {
-            (void)Dem_SetEventStatus(DEM_EVENT_SHT30_COMM_FAILED, DEM_EVENT_STATUS_FAILED);
-        }
     }
 }

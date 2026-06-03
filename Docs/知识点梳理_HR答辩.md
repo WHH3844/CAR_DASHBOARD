@@ -152,22 +152,34 @@ LCD 是 800x480 RGB565 屏，TLI/RGB 输出像素，SDRAM 做 framebuffer。
   -> 拉低 PWR_HOLD
 ```
 
-## 裸机 super loop 怎么讲
+## FreeRTOS 移植怎么讲
 
-当前不使用 FreeRTOS，因为第一版更关注硬件和架构稳定性。
+当前已经把 FreeRTOS 加入工程，但第一版没有急着拆很多任务，而是先创建一个 `EcuM` 主任务承载原来的 10ms 周期调度。
 
-裸机调度：
+这样做的原因：
 
-- 10ms：主循环、按键、CAN、Dashboard。
-- 500ms：LCD 刷新。
-- 1000ms：RTC/SHT30、诊断状态、NM 状态。
+- 前期板级 bring-up 用裸机更容易定位硬件问题，硬件跑通后再加入 RTOS 更稳。
+- 第一版单任务能验证 FreeRTOS 移植、tick、中断向量、堆和任务栈，同时保持原有业务时序基本不变。
+- LCD framebuffer、I2C、EEPROM、RTE 全局信号还没有加锁，直接拆多任务容易引入并发访问问题。
+- 后续可以再拆成 CAN 任务、显示任务、传感器任务、NvM/诊断任务，并用队列、互斥量或事件组处理共享资源。
+
+当前调度：
+
+- FreeRTOS tick：1ms。
+- `EcuM` 主任务：每 10ms 运行一次。
+- 10ms：按键、CAN、Dashboard、诊断入口。
 - 100ms：NvM/Dem 后台处理。
+- 500ms：LCD 主界面刷新。
+- 1000ms：RTC/SHT30、运行日志。
 
-为什么不是一开始上 RTOS：
+面试回答重点：
 
-- RTOS 会引入任务栈、优先级、互斥、调度延迟等新变量。
-- 板级 bring-up 阶段先用裸机更容易定位问题。
-- 架构稳定后再迁移到 FreeRTOS 更稳。
+- `SVC_Handler` 用于启动第一个任务。
+- `PendSV_Handler` 用于上下文切换。
+- `SysTick_Handler` 提供 RTOS tick。
+- 本项目使用 `heap_4.c` 做动态内存管理，适合有创建/释放需求且能合并空闲块的场景。
+- 配置了 malloc failed hook 和 stack overflow hook，便于发现堆不足和任务栈溢出。
+- 如果板上 RTOS 出问题，可以把 `APP_CFG_USE_FREERTOS` 改为 `0u` 回退裸机，对比判断是业务问题还是 RTOS 移植问题。
 
 ## HR 可能问：你遇到过什么难点
 
@@ -188,4 +200,5 @@ LCD 是 800x480 RGB565 屏，TLI/RGB 输出像素，SDRAM 做 framebuffer。
 - 设计并实现 Mini AUTOSAR-like 软件分层。
 - 实现 CAN 信号解析、RTE 信号接口、Dashboard APP。
 - 实现基础 UDS 诊断、Dem 故障管理和 NvM EEPROM 保存。
+- 移植 FreeRTOS，并用单 `EcuM` 主任务保持原 10ms 调度节拍。
 - 编写测试步骤和调试记录，能用 PCAN/Keil/串口复现。

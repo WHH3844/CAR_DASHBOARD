@@ -1,8 +1,13 @@
-#include "App_Power.h"
+﻿#include "App_Power.h"
 
 #include "PowerIf.h"
 #include "board_pins.h"
 
+/*
+ * ReleaseSeen 防止上电按住电源键时直接触发关机。
+ * ShutdownRequested 由 App_Power 置位，由 EcuM 读取并清除。
+ * PressedStartMs 记录本次长按开始时间，0 表示当前没有计时。
+ */
 static uint8_t App_Power_ReleaseSeen;
 static uint8_t App_Power_ShutdownRequested;
 static uint32_t App_Power_PressedStartMs;
@@ -18,6 +23,10 @@ void App_Power_MainFunction(uint32_t tick_ms)
 {
     if (PowerIf_KeyIsPressed() == 0u)
     {
+        /*
+         * 检测到释放后，后续再按才进入长按关机判定。
+         * 每次释放都清零 PressedStartMs，避免下一次按下沿沿用旧时间。
+         */
         App_Power_ReleaseSeen = 1u;
         App_Power_PressedStartMs = 0u;
         return;
@@ -34,6 +43,7 @@ void App_Power_MainFunction(uint32_t tick_ms)
 
     if (App_Power_PressedStartMs == 0u)
     {
+        /* 第一次看到按下时只记录起点，下一轮再计算持续时间。 */
         App_Power_PressedStartMs = tick_ms;
         return;
     }
@@ -52,46 +62,4 @@ uint8_t App_Power_IsShutdownRequested(void)
 void App_Power_ClearShutdownRequest(void)
 {
     App_Power_ShutdownRequested = 0u;
-}
-#include "App_Power.h"
-
-#include "NvM.h"
-#include "PowerIf.h"
-#include "board_pins.h"
-
-static uint8_t App_PowerReleaseSeen;
-static uint16_t App_PowerPressedMs;
-
-void App_Power_Init(void)
-{
-    App_PowerReleaseSeen = 0u;
-    App_PowerPressedMs = 0u;
-}
-
-void App_Power_MainFunction(uint16_t elapsed_ms)
-{
-    if (PowerIf_KeyIsPressed() == 0u)
-    {
-        App_PowerReleaseSeen = 1u;
-        App_PowerPressedMs = 0u;
-        return;
-    }
-
-    if (App_PowerReleaseSeen == 0u)
-    {
-        return;
-    }
-
-    if (App_PowerPressedMs < POWERIF_SHUTDOWN_LONG_PRESS_MS)
-    {
-        App_PowerPressedMs = (uint16_t)(App_PowerPressedMs + elapsed_ms);
-        return;
-    }
-
-    /*
-     * 软关机前先强制写 NvM，再拉低 PWR_HOLD。
-     * 这比直接在按键回调里断电更接近真实 ECU 的关机流程。
-     */
-    (void)NvM_WriteAll();
-    PowerIf_Shutdown();
 }

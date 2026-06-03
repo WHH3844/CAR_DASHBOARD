@@ -1,4 +1,4 @@
-#include "NvM.h"
+﻿#include "NvM.h"
 
 #include "Crc.h"
 #include "Eep.h"
@@ -9,6 +9,13 @@
 #define NVM_MAX_PAYLOAD_SIZE        128u
 #define NVM_CRC_START_VALUE         0xFFFFu
 
+/*
+ * NvM 块格式：
+ * [0..1] magic，用于识别块类型；
+ * [2]    version，用于后续结构体升级；
+ * [3..4] payload length；
+ * [5..6] CRC16，覆盖 payload。
+ */
 typedef struct
 {
     NvM_BlockIdType id;
@@ -55,6 +62,7 @@ static uint8_t NvM_WriteByte(uint16_t address, uint8_t data)
 
 static uint16_t NvM_MakeU16(uint8_t low, uint8_t high)
 {
+    /* EEPROM 按 little-endian 存储 16-bit 字段，便于在十六进制 dump 中低字节先看见。 */
     return (uint16_t)((uint16_t)low | ((uint16_t)high << 8u));
 }
 
@@ -77,6 +85,7 @@ Std_ReturnType NvM_ReadBlock(NvM_BlockIdType block_id, uint8_t *data, uint16_t l
 
     if ((data == 0) || (length == 0u) || (length > NVM_MAX_PAYLOAD_SIZE))
     {
+        /* NvM 不接受空指针、空长度和超过临时 payload 缓冲区的读请求。 */
         return E_NOT_OK;
     }
 
@@ -102,6 +111,10 @@ Std_ReturnType NvM_ReadBlock(NvM_BlockIdType block_id, uint8_t *data, uint16_t l
         (header[2] != NVM_CFG_VERSION) ||
         (stored_length != length))
     {
+        /*
+         * magic/version/length 任一不匹配都认为块无效。
+         * 这样结构体大小变化后不会把旧 EEPROM 数据误解释成新结构。
+         */
         return E_NOT_OK;
     }
 
@@ -116,6 +129,7 @@ Std_ReturnType NvM_ReadBlock(NvM_BlockIdType block_id, uint8_t *data, uint16_t l
     calc_crc = Crc_CalculateCrc16(payload, stored_length, NVM_CRC_START_VALUE);
     if (calc_crc != stored_crc)
     {
+        /* CRC 不一致说明 EEPROM 数据损坏或写入中断，调用方会走默认值路径。 */
         return E_NOT_OK;
     }
 
@@ -146,6 +160,10 @@ Std_ReturnType NvM_WriteBlock(NvM_BlockIdType block_id, const uint8_t *data, uin
     }
 
     crc = Crc_CalculateCrc16(data, length, NVM_CRC_START_VALUE);
+    /*
+     * 头部在 RAM 中一次性拼好，再逐字节写入 EEPROM。
+     * 当前 Eep 接口是字节粒度，后续若换页写，也只需要调整 NvM_WriteByte 封装。
+     */
     NvM_PutU16(&header[0], config->magic);
     header[2] = NVM_CFG_VERSION;
     NvM_PutU16(&header[3], length);
@@ -176,6 +194,10 @@ static void NvM_LoadOrDefaultBootInfo(void)
                       (uint8_t *)&NvM_BootInfo,
                       sizeof(NvM_BootInfo)) != E_OK)
     {
+        /*
+         * 首次上电或 EEPROM 校验失败时使用安全默认值。
+         * reserved 清零，避免未来字段扩展时读到随机数据。
+         */
         NvM_BootInfo.boot_counter = 0u;
         NvM_BootInfo.last_reset_reason = 0u;
         NvM_BootInfo.reserved[0] = 0u;
@@ -183,6 +205,7 @@ static void NvM_LoadOrDefaultBootInfo(void)
         NvM_BootInfo.reserved[2] = 0u;
     }
 
+    /* boot_counter 每次初始化递增，并立即写回，便于诊断 DID 观察重启次数。 */
     NvM_BootInfo.boot_counter++;
     (void)NvM_WriteBlock(NVM_BLOCK_BOOT_INFO,
                          (const uint8_t *)&NvM_BootInfo,
@@ -195,6 +218,10 @@ static void NvM_LoadOrDefaultSystemConfig(void)
                       (uint8_t *)&NvM_SystemConfig,
                       sizeof(NvM_SystemConfig)) != E_OK)
     {
+        /*
+         * 系统配置读不到时写入默认配置。
+         * 这样后续 App_Dashboard_Init() 可以始终拿到一份完整配置。
+         */
         NvM_SystemConfig.backlight_level = NVM_CFG_SYSTEM_BACKLIGHT_DEFAULT;
         NvM_SystemConfig.buzzer_enable = NVM_CFG_SYSTEM_BUZZER_DEFAULT;
         NvM_SystemConfig.theme = NVM_CFG_SYSTEM_THEME_DEFAULT;
@@ -247,6 +274,7 @@ void NvM_WriteAll(void)
 {
     if (NvM_Initialized == 0u)
     {
+        /* 初始化未完成时不写 EEPROM，避免把未准备好的 RAM 镜像覆盖到持久区。 */
         return;
     }
 
@@ -256,329 +284,4 @@ void NvM_WriteAll(void)
     (void)NvM_WriteBlock(NVM_BLOCK_SYSTEM_CONFIG,
                          (const uint8_t *)&NvM_SystemConfig,
                          sizeof(NvM_SystemConfig));
-}
-#include "NvM.h"
-
-#include "Crc.h"
-#include "Dem.h"
-#include "Eep.h"
-#include "NvM_Cfg.h"
-
-#define NVM_BOOT_PAYLOAD_SIZE       4u
-#define NVM_SYSTEM_PAYLOAD_SIZE     4u
-#define NVM_DEM_PAYLOAD_SIZE        (DEM_EVENT_COUNT * 3u)
-#define NVM_HEADER_SIZE             4u
-#define NVM_WRITE_DELAY_MS          1000u
-
-static uint16_t NvM_BootCounter;
-static NvM_SystemConfigType NvM_SystemConfig;
-static uint8_t NvM_BootDirty;
-static uint8_t NvM_SystemDirty;
-static uint8_t NvM_DemDirty;
-static uint16_t NvM_DirtyAgeMs;
-
-static uint8_t NvM_ReadByteArray(uint16_t address, uint8_t *data, uint16_t length)
-{
-    uint16_t index;
-
-    for (index = 0u; index < length; index++)
-    {
-        if (Eep_ReadByte((uint16_t)(address + index), &data[index]) == 0u)
-        {
-            return 0u;
-        }
-    }
-
-    return 1u;
-}
-
-static uint8_t NvM_WriteByteArray(uint16_t address, const uint8_t *data, uint16_t length)
-{
-    uint16_t index;
-
-    for (index = 0u; index < length; index++)
-    {
-        if (Eep_WriteByte((uint16_t)(address + index), data[index]) == 0u)
-        {
-            return 0u;
-        }
-    }
-
-    return 1u;
-}
-
-static uint8_t NvM_ReadBlock(uint16_t address,
-                             uint16_t magic,
-                             uint8_t *payload,
-                             uint16_t payload_length)
-{
-    uint8_t header[NVM_HEADER_SIZE];
-    uint16_t stored_magic;
-    uint16_t stored_crc;
-    uint16_t calc_crc;
-
-    if (NvM_ReadByteArray(address, header, sizeof(header)) == 0u)
-    {
-        return 0u;
-    }
-
-    stored_magic = (uint16_t)((uint16_t)header[0] | ((uint16_t)header[1] << 8u));
-    stored_crc = (uint16_t)((uint16_t)header[2] | ((uint16_t)header[3] << 8u));
-    if (stored_magic != magic)
-    {
-        return 0u;
-    }
-
-    if (NvM_ReadByteArray((uint16_t)(address + NVM_HEADER_SIZE), payload, payload_length) == 0u)
-    {
-        return 0u;
-    }
-
-    calc_crc = Crc_CalculateCrc16(payload, payload_length, 0xFFFFu);
-    return (calc_crc == stored_crc) ? 1u : 0u;
-}
-
-static uint8_t NvM_WriteBlock(uint16_t address,
-                              uint16_t magic,
-                              const uint8_t *payload,
-                              uint16_t payload_length)
-{
-    uint8_t header[NVM_HEADER_SIZE];
-    uint16_t crc;
-
-    crc = Crc_CalculateCrc16(payload, payload_length, 0xFFFFu);
-    header[0] = (uint8_t)(magic & 0xFFu);
-    header[1] = (uint8_t)((magic >> 8u) & 0xFFu);
-    header[2] = (uint8_t)(crc & 0xFFu);
-    header[3] = (uint8_t)((crc >> 8u) & 0xFFu);
-
-    if (NvM_WriteByteArray(address, header, sizeof(header)) == 0u)
-    {
-        return 0u;
-    }
-
-    return NvM_WriteByteArray((uint16_t)(address + NVM_HEADER_SIZE),
-                              payload,
-                              payload_length);
-}
-
-static void NvM_LoadBootInfo(void)
-{
-    uint8_t payload[NVM_BOOT_PAYLOAD_SIZE];
-
-    if (NvM_ReadBlock(NVM_CFG_ADDR_BOOT_INFO,
-                      NVM_CFG_MAGIC_BOOT_INFO,
-                      payload,
-                      sizeof(payload)) != 0u)
-    {
-        NvM_BootCounter = (uint16_t)((uint16_t)payload[0] | ((uint16_t)payload[1] << 8u));
-    }
-    else
-    {
-        NvM_BootCounter = 0u;
-    }
-
-    if (NvM_BootCounter < 0xFFFFu)
-    {
-        NvM_BootCounter++;
-    }
-    NvM_BootDirty = 1u;
-}
-
-static void NvM_LoadSystemConfig(void)
-{
-    uint8_t payload[NVM_SYSTEM_PAYLOAD_SIZE];
-
-    if (NvM_ReadBlock(NVM_CFG_ADDR_SYSTEM_CONFIG,
-                      NVM_CFG_MAGIC_SYSTEM_CONFIG,
-                      payload,
-                      sizeof(payload)) != 0u)
-    {
-        NvM_SystemConfig.theme = payload[0];
-        NvM_SystemConfig.backlight_level = payload[1];
-        NvM_SystemConfig.buzzer_enable = payload[2];
-        NvM_SystemConfig.can_baudrate_index = payload[3];
-    }
-    else
-    {
-        NvM_SystemConfig.theme = NVM_CFG_SYSTEM_THEME_DEFAULT;
-        NvM_SystemConfig.backlight_level = NVM_CFG_SYSTEM_BACKLIGHT_DEFAULT;
-        NvM_SystemConfig.buzzer_enable = NVM_CFG_SYSTEM_BUZZER_DEFAULT;
-        NvM_SystemConfig.can_baudrate_index = 0u;
-        NvM_SystemDirty = 1u;
-    }
-}
-
-static void NvM_LoadDemStatus(void)
-{
-    uint8_t payload[NVM_DEM_PAYLOAD_SIZE];
-
-    if (NvM_ReadBlock(NVM_CFG_ADDR_DEM_STATUS,
-                      NVM_CFG_MAGIC_DEM_STATUS,
-                      payload,
-                      sizeof(payload)) != 0u)
-    {
-        Dem_LoadNvMData(payload, sizeof(payload));
-    }
-    else
-    {
-        NvM_DemDirty = 1u;
-    }
-}
-
-static Std_ReturnType NvM_WriteBootInfo(void)
-{
-    uint8_t payload[NVM_BOOT_PAYLOAD_SIZE];
-
-    payload[0] = (uint8_t)(NvM_BootCounter & 0xFFu);
-    payload[1] = (uint8_t)((NvM_BootCounter >> 8u) & 0xFFu);
-    payload[2] = NVM_CFG_VERSION;
-    payload[3] = 0u;
-
-    return (NvM_WriteBlock(NVM_CFG_ADDR_BOOT_INFO,
-                           NVM_CFG_MAGIC_BOOT_INFO,
-                           payload,
-                           sizeof(payload)) != 0u) ? E_OK : E_NOT_OK;
-}
-
-static Std_ReturnType NvM_WriteSystemConfig(void)
-{
-    uint8_t payload[NVM_SYSTEM_PAYLOAD_SIZE];
-
-    payload[0] = NvM_SystemConfig.theme;
-    payload[1] = NvM_SystemConfig.backlight_level;
-    payload[2] = NvM_SystemConfig.buzzer_enable;
-    payload[3] = NvM_SystemConfig.can_baudrate_index;
-
-    return (NvM_WriteBlock(NVM_CFG_ADDR_SYSTEM_CONFIG,
-                           NVM_CFG_MAGIC_SYSTEM_CONFIG,
-                           payload,
-                           sizeof(payload)) != 0u) ? E_OK : E_NOT_OK;
-}
-
-static Std_ReturnType NvM_WriteDemStatus(void)
-{
-    uint8_t payload[NVM_DEM_PAYLOAD_SIZE];
-
-    if (Dem_GetNvMData(payload, sizeof(payload)) == 0u)
-    {
-        return E_NOT_OK;
-    }
-
-    return (NvM_WriteBlock(NVM_CFG_ADDR_DEM_STATUS,
-                           NVM_CFG_MAGIC_DEM_STATUS,
-                           payload,
-                           sizeof(payload)) != 0u) ? E_OK : E_NOT_OK;
-}
-
-void NvM_Init(void)
-{
-    Eep_Init();
-    NvM_BootDirty = 0u;
-    NvM_SystemDirty = 0u;
-    NvM_DemDirty = 0u;
-    NvM_DirtyAgeMs = 0u;
-
-    NvM_LoadBootInfo();
-    NvM_LoadSystemConfig();
-    NvM_LoadDemStatus();
-}
-
-void NvM_MainFunction(uint16_t elapsed_ms)
-{
-    if ((NvM_BootDirty == 0u) && (NvM_SystemDirty == 0u) && (NvM_DemDirty == 0u))
-    {
-        NvM_DirtyAgeMs = 0u;
-        return;
-    }
-
-    if (NvM_DirtyAgeMs < NVM_WRITE_DELAY_MS)
-    {
-        NvM_DirtyAgeMs = (uint16_t)(NvM_DirtyAgeMs + elapsed_ms);
-        return;
-    }
-
-    (void)NvM_WriteAll();
-}
-
-Std_ReturnType NvM_WriteAll(void)
-{
-    Std_ReturnType result;
-
-    result = E_OK;
-
-    if (NvM_BootDirty != 0u)
-    {
-        if (NvM_WriteBootInfo() == E_OK)
-        {
-            NvM_BootDirty = 0u;
-        }
-        else
-        {
-            result = E_NOT_OK;
-        }
-    }
-
-    if (NvM_SystemDirty != 0u)
-    {
-        if (NvM_WriteSystemConfig() == E_OK)
-        {
-            NvM_SystemDirty = 0u;
-        }
-        else
-        {
-            result = E_NOT_OK;
-        }
-    }
-
-    if (NvM_DemDirty != 0u)
-    {
-        if (NvM_WriteDemStatus() == E_OK)
-        {
-            NvM_DemDirty = 0u;
-        }
-        else
-        {
-            result = E_NOT_OK;
-        }
-    }
-
-    NvM_DirtyAgeMs = 0u;
-    return result;
-}
-
-void NvM_MarkDemDirty(void)
-{
-    NvM_DemDirty = 1u;
-}
-
-void NvM_MarkSystemConfigDirty(void)
-{
-    NvM_SystemDirty = 1u;
-}
-
-uint16_t NvM_GetBootCounter(void)
-{
-    return NvM_BootCounter;
-}
-
-const NvM_SystemConfigType *NvM_GetSystemConfig(void)
-{
-    return &NvM_SystemConfig;
-}
-
-void NvM_SetSystemConfig(const NvM_SystemConfigType *config)
-{
-    if (config == 0)
-    {
-        return;
-    }
-
-    NvM_SystemConfig = *config;
-    if (NvM_SystemConfig.backlight_level > 100u)
-    {
-        NvM_SystemConfig.backlight_level = 100u;
-    }
-    NvM_SystemConfig.buzzer_enable = (NvM_SystemConfig.buzzer_enable != 0u) ? 1u : 0u;
-    NvM_MarkSystemConfigDirty();
 }

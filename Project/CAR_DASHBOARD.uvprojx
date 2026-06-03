@@ -340,7 +340,7 @@
               <MiscControls></MiscControls>
               <Define>GD32F470</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..\App\Dashboard;..\App\Diag;..\App\Display;..\App\Key;..\App\Logger;..\App\Power;..\App\Sensor;..\Bsw\Communication\CanIf;..\Bsw\Communication\CanSM;..\Bsw\Communication\CanTp;..\Bsw\Communication\CanTrcv;..\Bsw\Communication\Com;..\Bsw\Communication\PduR;..\Bsw\Communication\UartIf;..\Bsw\EcuAbstraction\BacklightIf;..\Bsw\EcuAbstraction\BuzzerIf;..\Bsw\EcuAbstraction\IoHwAb;..\Bsw\EcuAbstraction\LcdIf;..\Bsw\EcuAbstraction\PowerIf;..\Bsw\EcuAbstraction\RtcIf;..\Bsw\EcuAbstraction\SdramIf;..\Bsw\EcuAbstraction\SensorIf;..\Bsw\Memory\Eep;..\Bsw\Memory\FatFsIf;..\Bsw\Memory\MemIf;..\Bsw\Memory\SdIf;..\Bsw\Memory\SdramMgr;..\Bsw\Services\BswM;..\Bsw\Services\Crc;..\Bsw\Services\Dcm;..\Bsw\Services\Dem;..\Bsw\Services\Det;..\Bsw\Services\EcuM;..\Bsw\Services\LogM;..\Bsw\Services\NvM;..\Config;..\Firmware\CMSIS;..\Firmware\CMSIS\GD\GD32F4xx\Include;..\Firmware\GD32F4xx_standard_peripheral\Include;..\Mcal\Can;..\Mcal\Dio;..\Mcal\Exmc;..\Mcal\I2c;..\Mcal\LcdTli;..\Mcal\LcdSpi;..\Mcal\Mcu;..\Mcal\Port;..\Mcal\Pwm;..\Mcal\Sdio;..\Mcal\Tim;..\Mcal\Uart;..\Mcal\Wdg;..\Os;..\Rte;..\Stub;..\Test\01_power_hold_test;..\Test\02_uart_led_test;..\Test\03_sdram_test;..\Test\04_lcd_color_test;..\Test\05_can_loop_test;..\Test\06_i2c_scan_test;..\Test\07_eeprom_test;..\Test\08_rtc_test;..\Test\09_sht30_test;..\Test\10_tf_card_test;..\Test\11_key_buzzer_test;..\Test\12_dashboard_demo</IncludePath>
+              <IncludePath>..;..\App\Dashboard;..\App\Diag;..\App\Display;..\App\Key;..\App\Logger;..\App\Power;..\App\Sensor;..\Bsw\Communication\CanIf;..\Bsw\Communication\CanSM;..\Bsw\Communication\CanTp;..\Bsw\Communication\CanTrcv;..\Bsw\Communication\Com;..\Bsw\Communication\PduR;..\Bsw\Communication\UartIf;..\Bsw\EcuAbstraction\BacklightIf;..\Bsw\EcuAbstraction\BuzzerIf;..\Bsw\EcuAbstraction\IoHwAb;..\Bsw\EcuAbstraction\LcdIf;..\Bsw\EcuAbstraction\PowerIf;..\Bsw\EcuAbstraction\RtcIf;..\Bsw\EcuAbstraction\SdramIf;..\Bsw\EcuAbstraction\SensorIf;..\Bsw\Memory\Eep;..\Bsw\Memory\FatFsIf;..\Bsw\Memory\MemIf;..\Bsw\Memory\SdIf;..\Bsw\Memory\SdramMgr;..\Bsw\Services\BswM;..\Bsw\Services\Crc;..\Bsw\Services\Dcm;..\Bsw\Services\Dem;..\Bsw\Services\Det;..\Bsw\Services\EcuM;..\Bsw\Services\LogM;..\Bsw\Services\NvM;..\Config;..\Firmware\CMSIS;..\Firmware\CMSIS\GD\GD32F4xx\Include;..\Firmware\GD32F4xx_standard_peripheral\Include;..\Mcal\Can;..\Mcal\Dio;..\Mcal\Exmc;..\Mcal\I2c;..\Mcal\LcdTli;..\Mcal\LcdSpi;..\Mcal\Mcu;..\Mcal\Port;..\Mcal\Pwm;..\Mcal\Sdio;..\Mcal\Tim;..\Mcal\Uart;..\Mcal\Wdg;..\Os;..\Os\FreeRTOS\Source\include;..\Os\FreeRTOS\Source\portable\RVDS\ARM_CM4F;..\Os\FreeRTOS\Source\portable\MemMang;..\Rte;..\Stub;..\Test\01_power_hold_test;..\Test\02_uart_led_test;..\Test\03_sdram_test;..\Test\04_lcd_color_test;..\Test\05_can_loop_test;..\Test\06_i2c_scan_test;..\Test\07_eeprom_test;..\Test\08_rtc_test;..\Test\09_sht30_test;..\Test\10_tf_card_test;..\Test\11_key_buzzer_test;..\Test\12_dashboard_demo</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -962,6 +962,71 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>FreeRTOS</GroupName>
+          <Files>
+            <File>
+              <FileName>tasks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\tasks.c</FilePath>
+            </File>
+            <File>
+              <FileName>queue.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\queue.c</FilePath>
+            </File>
+            <File>
+              <FileName>list.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\list.c</FilePath>
+            </File>
+            <File>
+              <FileName>timers.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\timers.c</FilePath>
+            </File>
+            <File>
+              <FileName>event_groups.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\event_groups.c</FilePath>
+            </File>
+            <File>
+              <FileName>stream_buffer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\stream_buffer.c</FilePath>
+            </File>
+            <File>
+              <FileName>heap_4.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\portable\MemMang\heap_4.c</FilePath>
+            </File>
+            <File>
+              <FileName>port.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\portable\RVDS\ARM_CM4F\port.c</FilePath>
+            </File>
+            <File>
+              <FileName>FreeRTOS.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\include\FreeRTOS.h</FilePath>
+            </File>
+            <File>
+              <FileName>task.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\include\task.h</FilePath>
+            </File>
+            <File>
+              <FileName>queue.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\include\queue.h</FilePath>
+            </File>
+            <File>
+              <FileName>portmacro.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Os\FreeRTOS\Source\portable\RVDS\ARM_CM4F\portmacro.h</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>Config</GroupName>
           <Files>
             <File>
@@ -1008,6 +1073,16 @@
               <FileName>App_Cfg.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\Config\App_Cfg.h</FilePath>
+            </File>
+            <File>
+              <FileName>FreeRTOSConfig.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Config\FreeRTOSConfig.h</FilePath>
+            </File>
+            <File>
+              <FileName>Std_Types.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Config\Std_Types.h</FilePath>
             </File>
             <File>
               <FileName>board_pins.h</FileName>
