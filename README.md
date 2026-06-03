@@ -4,7 +4,7 @@
 
 本项目目标不是实现完整商用 AUTOSAR，而是基于 AUTOSAR Classic 的分层思想，搭建一个适合学习、调试、硬件验证和后续扩展的轻量化汽车仪表盘软件架构。
 
-当前项目仍在开发中，软件工程已经建立基础目录和模块骨架，PCB 一版设计已经完成，后续重点是等待板子回来后按模块焊接、上电和验证。
+当前项目仍在开发中，PCB 一版板级测试已经完成，电源、串口、SDRAM、LCD、CAN、I2C、EEPROM、RTC、SHT30、TF 卡、按键蜂鸣器和整板 Demo 均已跑通。当前重点已经从“硬件 bring-up”切换到“正式软件架构落地”。
 
 ## 项目定位
 
@@ -23,13 +23,90 @@
 
 ## 当前状态
 
-- 已创建 GD32F470ZGT6 汽车仪表盘工程模板
-- 已建立 `App` / `Rte` / `Bsw` / `Mcal` / `Os` / `Config` / `Stub` / `Test` 目录
-- 已加入 GD32F4xx CMSIS、标准外设库和 USB 库
-- 已创建 Keil MDK 工程文件
-- 已预留 12 个分阶段硬件测试程序目录
-- `main.c` 当前仍为最小空循环，具体模块代码等待板子验证后逐步填充
-- PCB 一版已经完成，等待打样、回板、焊接和分阶段测试
+- 已创建 GD32F470ZGT6 汽车仪表盘工程模板。
+- 已建立 `App` / `Rte` / `Bsw` / `Mcal` / `Os` / `Config` / `Stub` / `Test` 目录。
+- 已加入 GD32F4xx CMSIS、标准外设库和 USB 库。
+- 已创建 Keil MDK 工程文件。
+- 已完成 12 个分阶段板级测试，硬件通路确认可用。
+- `main.c` 已切换为正式架构入口，只调用 `EcuM_Init()` 和 `EcuM_MainLoop()`。
+- 已完成第一版 Mini AUTOSAR-like 主线：`EcuM -> BSW/RTE -> APP` 裸机 super loop。
+
+## 2026-06-03 架构落地功能
+
+本轮把之前 `Test/12_dashboard_demo` 的整板联调能力，拆分进正式分层架构：
+
+```text
+CAN 总线
+  ↓
+CanIf
+  ↓
+PduR
+  ├─ Com -> RTE Signal -> App_Dashboard -> App_Display -> LcdIf
+  └─ CanTp -> Dcm -> Dem / NvM
+```
+
+已实现内容：
+
+- `EcuM`：负责早期 `PWR_HOLD` 自锁、启动初始化顺序、裸机周期调度、长按电源键关机保存。
+- `Os`：提供当前阶段使用的忙等 `Os_DelayMs()`，后续可替换为 SysTick 或 RTOS tick。
+- `RTE`：提供车速、转速、油量、水温、电压、RTC、温湿度、按键、背光、蜂鸣器、报警状态等信号接口。
+- `CanIf / CanTrcv / CanSM`：封装 CAN1 500K 初始化、标准帧收发、SIT1043QT EN/STB_N/ERR_N 控制和基础通信状态。
+- `PduR / Com`：按 CAN ID 路由，解析 `0x321/0x322/0x324`，并周期发送 `0x325/0x326/0x440`。
+- `CanTp / Dcm`：实现教学版 UDS 单帧诊断，支持 `0x10`、`0x22`、`0x19`、`0x14`、`0x3E`。
+- `Dem`：实现 20 个 DTC 的状态、确认位、报警灯位、发生次数、清故障和按状态掩码查询。
+- `NvM`：用 FT24C16A EEPROM 保存启动次数、系统配置和 DTC 状态，每个块带 magic/version/length/CRC16。
+- `SdramMgr / SdramIf`：封装已验证的 EXMC SDRAM 初始化和 framebuffer 地址。
+- `LcdIf / BacklightIf`：封装 LCD 初始化、局部矩形刷新、文本绘制和背光开关/亮度接口。
+- `App_Dashboard`：处理 KEY1 模拟模式、KEY2 静音、KEY3 清零、超速/高转速报警和蜂鸣器控制。
+- `App_Display`：周期刷新 LCD 主界面，显示车速、转速、CAN 状态、RTC、温湿度、报警/静音状态。
+- `App_Sensor`：周期读取 DS3231 和 SHT30，并把通信失败/时间非法写入 Dem。
+
+本轮 Keil 命令行构建已通过核心编译链接流程，生成 `CAR_DASHBOARD.hex`。构建命令：
+
+```powershell
+D:\Keil5\UV4\UV4.exe -b D:\MCU\Project\car\CAR_DASHBOARD\Project\CAR_DASHBOARD.uvprojx -j0 -o D:\MCU\Project\car\CAR_DASHBOARD\Project\Objects\codex_build.log
+```
+
+## 当前测试方法
+
+1. 用 Keil 打开 `Project/CAR_DASHBOARD.uvprojx`，全量 Rebuild。
+2. 烧录 `Project/Objects/CAR_DASHBOARD.hex`。
+3. 打开串口 `115200 8N1`，上电后应看到 `CAR_DASHBOARD architecture main start`、`NvM init ok`、`Dem init ok`、`EcuM enter RUN` 等日志。
+4. LCD 应显示正式 Dashboard 主界面，而不是旧的测试 Demo 入口。
+5. PCAN/USB-CAN 使用标准帧、500K，周期发送 `0x321`，DLC=8：
+
+```text
+100km/h、3000rpm 示例：
+CAN ID: 0x321
+Data  : 40 06 E0 2E C8 5A 41 78
+
+解释：
+VehicleSpeed raw=0x0640，乘 0.0625 = 100km/h
+EngineSpeed  raw=0x2EE0，乘 0.25   = 3000rpm
+Fuel raw=0xC8，乘 0.4 = 80%
+Coolant raw=0x5A，减 40 = 50C
+Outdoor raw=0x41，减 40 = 25C
+Battery raw=0x78，当前按 0.1V/bit = 12.0V
+```
+
+6. 诊断请求走 `0x700`，响应看 `0x708`。推荐先发 ISO-TP 单帧：
+
+```text
+进入扩展会话：02 10 03 00 00 00 00 00 -> 03 50 03 00 32 13 88 00
+TesterPresent：02 3E 00 00 00 00 00 00 -> 02 7E 00 00 00 00 00 00
+读车速 DID ：03 22 F1 81 00 00 00 00 -> 05 62 F1 81 xx xx 00 00
+读 DTC 数量：03 19 01 FF 00 00 00 00 -> 05 59 01 FF 00 nn 00 00
+清全部 DTC ：04 14 FF FF FF 00 00 00 -> 01 54 00 00 00 00 00 00
+```
+
+7. 按键测试：
+
+```text
+KEY1：切换模拟车速/转速
+KEY2：静音/恢复蜂鸣器
+KEY3：清零当前仪表值
+长按 KEY_POWER：保存 NvM/Dem 后拉低 PWR_HOLD 关机
+```
 
 ## 硬件概览
 
