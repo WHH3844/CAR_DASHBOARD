@@ -5,12 +5,17 @@
 
 static Rte_DashboardDataType Rte_DashboardData;
 static Rte_EnvironmentDataType Rte_EnvironmentData;
+static Rte_TpmsDataType Rte_TpmsData;
+static Rte_ConfigDataType Rte_ConfigData;
 static RtcIf_TimeType Rte_RtcTime;
 static uint8_t Rte_RtcValid;
 static Rte_KeyEventType Rte_KeyEvent;
+static Rte_UserInputEventType Rte_UserInputEvent;
+static uint8_t Rte_UserInputPending;
 static uint8_t Rte_BacklightLevel;
 static uint32_t Rte_LastPowertrainRxTick;
 static uint32_t Rte_LastBodyRxTick;
+static uint32_t Rte_LastTpmsRxTick;
 
 void Rte_Signal_Init(void)
 {
@@ -37,6 +42,25 @@ void Rte_Signal_Init(void)
     Rte_EnvironmentData.humidity_rh_x100 = 0;
     Rte_EnvironmentData.valid = 0u;
 
+    Rte_TpmsData.pressure_bar_x100[0] = 0u;
+    Rte_TpmsData.pressure_bar_x100[1] = 0u;
+    Rte_TpmsData.pressure_bar_x100[2] = 0u;
+    Rte_TpmsData.pressure_bar_x100[3] = 0u;
+    Rte_TpmsData.temperature_c[0] = 0;
+    Rte_TpmsData.temperature_c[1] = 0;
+    Rte_TpmsData.temperature_c[2] = 0;
+    Rte_TpmsData.temperature_c[3] = 0;
+    Rte_TpmsData.valid = 0u;
+
+    Rte_ConfigData.theme_mode = 0u;
+    Rte_ConfigData.language = 0u;
+    Rte_ConfigData.unit_mode = 0u;
+    Rte_ConfigData.warning_volume = 0u;
+    Rte_ConfigData.driving_range_km = 0u;
+    Rte_ConfigData.datetime_valid = 0u;
+    Rte_ConfigData.time_hour = 0u;
+    Rte_ConfigData.time_minute = 0u;
+
     Rte_RtcTime.year = 2026u;
     Rte_RtcTime.month = 6u;
     Rte_RtcTime.date = 1u;
@@ -47,9 +71,16 @@ void Rte_Signal_Init(void)
     Rte_RtcValid = 0u;
 
     Rte_KeyEvent = RTE_KEY_EVENT_NONE;
+    Rte_UserInputEvent.key_code = 0u;
+    Rte_UserInputEvent.key_action = 0u;
+    Rte_UserInputEvent.event_counter = 0u;
+    Rte_UserInputEvent.power_key_long_press = 0u;
+    Rte_UserInputEvent.shutdown_confirm = 0u;
+    Rte_UserInputPending = 0u;
     Rte_BacklightLevel = RTE_CFG_DEFAULT_BACKLIGHT_LEVEL;
     Rte_LastPowertrainRxTick = 0u;
     Rte_LastBodyRxTick = 0u;
+    Rte_LastTpmsRxTick = 0u;
 }
 
 Std_ReturnType Rte_Write_Powertrain(uint16_t speed_kph_x10,
@@ -100,6 +131,30 @@ Std_ReturnType Rte_Write_Environment(const Rte_EnvironmentDataType *environment)
     return E_OK;
 }
 
+Std_ReturnType Rte_Write_TpmsStatus(const Rte_TpmsDataType *tpms, uint32_t tick_ms)
+{
+    if (tpms == 0)
+    {
+        return E_NOT_OK;
+    }
+
+    Rte_TpmsData = *tpms;
+    Rte_TpmsData.valid = 1u;
+    Rte_LastTpmsRxTick = tick_ms;
+    return E_OK;
+}
+
+Std_ReturnType Rte_Write_ConfigData(const Rte_ConfigDataType *config)
+{
+    if (config == 0)
+    {
+        return E_NOT_OK;
+    }
+
+    Rte_ConfigData = *config;
+    return E_OK;
+}
+
 Std_ReturnType Rte_Write_RtcTime(const RtcIf_TimeType *time, uint8_t valid)
 {
     if (time == 0)
@@ -116,6 +171,18 @@ Std_ReturnType Rte_Write_RtcTime(const RtcIf_TimeType *time, uint8_t valid)
 Std_ReturnType Rte_Write_KeyEvent(Rte_KeyEventType event)
 {
     Rte_KeyEvent = event;
+    return E_OK;
+}
+
+Std_ReturnType Rte_Write_UserInputEvent(const Rte_UserInputEventType *event)
+{
+    if (event == 0)
+    {
+        return E_NOT_OK;
+    }
+
+    Rte_UserInputEvent = *event;
+    Rte_UserInputPending = 1u;
     return E_OK;
 }
 
@@ -173,6 +240,12 @@ void Rte_Update_CanValidity(uint32_t tick_ms)
     {
         Rte_DashboardData.can_body_valid = 0u;
     }
+
+    if ((Rte_TpmsData.valid != 0u) &&
+        ((tick_ms - Rte_LastTpmsRxTick) > CAN_CFG_TPMS_STATUS_TIMEOUT_MS))
+    {
+        Rte_TpmsData.valid = 0u;
+    }
 }
 
 Std_ReturnType Rte_Read_DashboardData(Rte_DashboardDataType *data)
@@ -194,6 +267,28 @@ Std_ReturnType Rte_Read_Environment(Rte_EnvironmentDataType *environment)
     }
 
     *environment = Rte_EnvironmentData;
+    return E_OK;
+}
+
+Std_ReturnType Rte_Read_TpmsStatus(Rte_TpmsDataType *tpms)
+{
+    if (tpms == 0)
+    {
+        return E_NOT_OK;
+    }
+
+    *tpms = Rte_TpmsData;
+    return E_OK;
+}
+
+Std_ReturnType Rte_Read_ConfigData(Rte_ConfigDataType *config)
+{
+    if (config == 0)
+    {
+        return E_NOT_OK;
+    }
+
+    *config = Rte_ConfigData;
     return E_OK;
 }
 
@@ -236,6 +331,18 @@ Std_ReturnType Rte_Take_KeyEvent(Rte_KeyEventType *event)
     return E_OK;
 }
 
+Std_ReturnType Rte_Take_UserInputEvent(Rte_UserInputEventType *event)
+{
+    if ((event == 0) || (Rte_UserInputPending == 0u))
+    {
+        return E_NOT_OK;
+    }
+
+    *event = Rte_UserInputEvent;
+    Rte_UserInputPending = 0u;
+    return E_OK;
+}
+
 Std_ReturnType Rte_Read_BacklightLevel(uint8_t *level)
 {
     if (level == 0)
@@ -255,4 +362,9 @@ uint32_t Rte_GetLastPowertrainRxTick(void)
 uint8_t Rte_IsPowertrainValid(void)
 {
     return Rte_DashboardData.can_ems_valid;
+}
+
+uint8_t Rte_IsTpmsValid(void)
+{
+    return Rte_TpmsData.valid;
 }

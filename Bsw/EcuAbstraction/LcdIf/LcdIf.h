@@ -29,6 +29,9 @@ void LcdIf_Clear(uint16_t color);
 /* 填充矩形区域；超出屏幕的部分会被裁剪，不会写越界。 */
 void LcdIf_FillRect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint16_t color);
 
+/* 使用 Bresenham 算法画线，坐标可传入负值，函数内部会裁剪到屏幕范围内。 */
+void LcdIf_DrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color);
+
 /* 使用内置 5x7 点阵字体绘制 ASCII 文本，scale 为像素放大倍数。 */
 void LcdIf_DrawText(uint32_t x, uint32_t y, const char *text, uint8_t scale, uint16_t color);
 

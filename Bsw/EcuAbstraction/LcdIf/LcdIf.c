@@ -174,6 +174,70 @@ void LcdIf_FillRect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uin
     }
 }
 
+static int32_t LcdIf_Abs32(int32_t value)
+{
+    return (value < 0) ? -value : value;
+}
+
+static void LcdIf_SetPixel(int32_t x, int32_t y, uint16_t color)
+{
+    volatile uint16_t *fb;
+
+    if ((LcdIf_Ready == 0u) ||
+        (x < 0) ||
+        (y < 0) ||
+        (x >= (int32_t)LCD_TLI_WIDTH) ||
+        (y >= (int32_t)LCD_TLI_HEIGHT))
+    {
+        return;
+    }
+
+    fb = (volatile uint16_t *)LcdIf_FrameBuffer;
+    fb[((uint32_t)y * LCD_TLI_WIDTH) + (uint32_t)x] = color;
+}
+
+void LcdIf_DrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
+{
+    int32_t dx;
+    int32_t sx;
+    int32_t dy;
+    int32_t sy;
+    int32_t err;
+    int32_t e2;
+
+    if (LcdIf_Ready == 0u)
+    {
+        return;
+    }
+
+    dx = LcdIf_Abs32(x1 - x0);
+    sx = (x0 < x1) ? 1 : -1;
+    dy = -LcdIf_Abs32(y1 - y0);
+    sy = (y0 < y1) ? 1 : -1;
+    err = dx + dy;
+
+    while (1)
+    {
+        LcdIf_SetPixel(x0, y0, color);
+        if ((x0 == x1) && (y0 == y1))
+        {
+            break;
+        }
+
+        e2 = err * 2;
+        if (e2 >= dy)
+        {
+            err += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx)
+        {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
 static uint32_t LcdIf_DrawChar(uint32_t x, uint32_t y, char ch, uint8_t scale, uint16_t color)
 {
     const uint8_t *glyph;
