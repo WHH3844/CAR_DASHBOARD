@@ -7,6 +7,13 @@
  * 0：回退到裸机 super loop，适合排查 RTOS tick 或任务栈问题。
  */
 #define APP_CFG_USE_FREERTOS                1u
+
+/*
+ * FreeRTOS 任务拆分开关：
+ * 1：CAN/APP/Display/Sensor/NvM/Logger 分任务运行；
+ * 0：保留单个 EcuM 10ms 主任务，便于回退排查。
+ */
+#define APP_CFG_FREERTOS_SPLIT_TASKS        1u
 /*
  * EcuM 主调度周期。
  * 10ms 是应用层折中值：按键去抖、关机长按、CAN 超时都能及时响应，
@@ -22,6 +29,25 @@
 #define APP_CFG_FREERTOS_PRIO_ECUM          3u
 
 /*
+ * 拆分后的任务栈和优先级。
+ * FreeRTOS 栈单位是 StackType_t，不是字节；ARM Cortex-M 下通常 1 单位 = 4 字节。
+ * 优先级保持在 FreeRTOSConfig.h 的 configMAX_PRIORITIES 范围内。
+ */
+#define APP_CFG_FREERTOS_CAN_STACK          512u
+#define APP_CFG_FREERTOS_APP_STACK          512u
+#define APP_CFG_FREERTOS_DISPLAY_STACK      1024u
+#define APP_CFG_FREERTOS_SENSOR_STACK       512u
+#define APP_CFG_FREERTOS_NVM_STACK          512u
+#define APP_CFG_FREERTOS_LOGGER_STACK       512u
+
+#define APP_CFG_FREERTOS_PRIO_CAN           4u
+#define APP_CFG_FREERTOS_PRIO_APP           3u
+#define APP_CFG_FREERTOS_PRIO_DISPLAY       2u
+#define APP_CFG_FREERTOS_PRIO_SENSOR        1u
+#define APP_CFG_FREERTOS_PRIO_NVM           1u
+#define APP_CFG_FREERTOS_PRIO_LOGGER        1u
+
+/*
  * 各业务任务的目标周期。
  * 当前 EcuM 每 10ms 调一次 App_Dashboard/App_Key/App_Power；
  * Display/NvM/Logger 等由 EcuM_NextXxxMs 做软件定时分频。
@@ -31,6 +57,7 @@
 #define APP_CFG_SENSOR_PERIOD_MS            1000u
 #define APP_CFG_KEY_PERIOD_MS               10u
 #define APP_CFG_NVM_PERIOD_MS               100u
+#define APP_CFG_LOGGER_PERIOD_MS            1000u
 
 /*
  * 仪表报警阈值，单位和 RTE 内部信号一致。

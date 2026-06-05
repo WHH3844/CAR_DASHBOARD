@@ -1,6 +1,7 @@
 ﻿#include "Rte_Signal.h"
 
 #include "Can_Cfg.h"
+#include "Os.h"
 #include "Rte_Cfg.h"
 
 static Rte_DashboardDataType Rte_DashboardData;
@@ -19,6 +20,8 @@ static uint32_t Rte_LastTpmsRxTick;
 
 void Rte_Signal_Init(void)
 {
+    Os_EnterCritical();
+
     /*
      * 所有 RTE 信号都初始化为“安全且可显示”的默认值：
      * 数值为 0，有效位为 0，背光使用配置默认值，RTC 给一个固定日期但标记 invalid。
@@ -81,6 +84,8 @@ void Rte_Signal_Init(void)
     Rte_LastPowertrainRxTick = 0u;
     Rte_LastBodyRxTick = 0u;
     Rte_LastTpmsRxTick = 0u;
+
+    Os_ExitCritical();
 }
 
 Std_ReturnType Rte_Write_Powertrain(uint16_t speed_kph_x10,
@@ -91,6 +96,8 @@ Std_ReturnType Rte_Write_Powertrain(uint16_t speed_kph_x10,
                                     uint16_t battery_mv,
                                     uint32_t tick_ms)
 {
+    Os_EnterCritical();
+
     Rte_DashboardData.vehicle_speed_kph_x10 = speed_kph_x10;
     Rte_DashboardData.engine_rpm = rpm;
     Rte_DashboardData.fuel_percent = fuel_percent;
@@ -103,6 +110,8 @@ Std_ReturnType Rte_Write_Powertrain(uint16_t speed_kph_x10,
      * 不依赖 Com 的内部调度状态。
      */
     Rte_LastPowertrainRxTick = tick_ms;
+
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -111,12 +120,16 @@ Std_ReturnType Rte_Write_BodyStatus(uint8_t ignition_status,
                                     uint8_t warning_flags,
                                     uint32_t tick_ms)
 {
+    Os_EnterCritical();
+
     Rte_DashboardData.ignition_status = ignition_status;
     Rte_DashboardData.gear_position = gear_position;
     Rte_DashboardData.warning_flags = warning_flags;
     Rte_DashboardData.can_body_valid = 1u;
     /* 车身报文单独记录接收时间，避免动力域和车身域互相影响有效位判断。 */
     Rte_LastBodyRxTick = tick_ms;
+
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -127,7 +140,9 @@ Std_ReturnType Rte_Write_Environment(const Rte_EnvironmentDataType *environment)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     Rte_EnvironmentData = *environment;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -138,9 +153,11 @@ Std_ReturnType Rte_Write_TpmsStatus(const Rte_TpmsDataType *tpms, uint32_t tick_
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     Rte_TpmsData = *tpms;
     Rte_TpmsData.valid = 1u;
     Rte_LastTpmsRxTick = tick_ms;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -151,7 +168,9 @@ Std_ReturnType Rte_Write_ConfigData(const Rte_ConfigDataType *config)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     Rte_ConfigData = *config;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -159,18 +178,24 @@ Std_ReturnType Rte_Write_RtcTime(const RtcIf_TimeType *time, uint8_t valid)
 {
     if (time == 0)
     {
+        Os_EnterCritical();
         Rte_RtcValid = 0u;
+        Os_ExitCritical();
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     Rte_RtcTime = *time;
     Rte_RtcValid = valid;
+    Os_ExitCritical();
     return E_OK;
 }
 
 Std_ReturnType Rte_Write_KeyEvent(Rte_KeyEventType event)
 {
+    Os_EnterCritical();
     Rte_KeyEvent = event;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -181,8 +206,10 @@ Std_ReturnType Rte_Write_UserInputEvent(const Rte_UserInputEventType *event)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     Rte_UserInputEvent = *event;
     Rte_UserInputPending = 1u;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -194,37 +221,49 @@ Std_ReturnType Rte_Write_BacklightLevel(uint8_t level)
         level = 100u;
     }
 
+    Os_EnterCritical();
     Rte_BacklightLevel = level;
+    Os_ExitCritical();
     return E_OK;
 }
 
 Std_ReturnType Rte_Write_BuzzerMuted(uint8_t muted)
 {
+    Os_EnterCritical();
     Rte_DashboardData.buzzer_muted = (muted != 0u) ? 1u : 0u;
+    Os_ExitCritical();
     return E_OK;
 }
 
 Std_ReturnType Rte_Write_SimulationMode(uint8_t enabled)
 {
+    Os_EnterCritical();
     Rte_DashboardData.simulation_mode = (enabled != 0u) ? 1u : 0u;
+    Os_ExitCritical();
     return E_OK;
 }
 
 Std_ReturnType Rte_Write_AlarmActive(uint8_t active)
 {
+    Os_EnterCritical();
     Rte_DashboardData.alarm_active = (active != 0u) ? 1u : 0u;
+    Os_ExitCritical();
     return E_OK;
 }
 
 void Rte_Clear_DashboardValues(void)
 {
+    Os_EnterCritical();
     Rte_DashboardData.vehicle_speed_kph_x10 = 0u;
     Rte_DashboardData.engine_rpm = 0u;
     Rte_DashboardData.can_ems_valid = 0u;
+    Os_ExitCritical();
 }
 
 void Rte_Update_CanValidity(uint32_t tick_ms)
 {
+    Os_EnterCritical();
+
     if ((Rte_DashboardData.can_ems_valid != 0u) &&
         ((tick_ms - Rte_LastPowertrainRxTick) > CAN_CFG_EMS_POWERTRAIN_TIMEOUT_MS))
     {
@@ -246,6 +285,8 @@ void Rte_Update_CanValidity(uint32_t tick_ms)
     {
         Rte_TpmsData.valid = 0u;
     }
+
+    Os_ExitCritical();
 }
 
 Std_ReturnType Rte_Read_DashboardData(Rte_DashboardDataType *data)
@@ -255,7 +296,9 @@ Std_ReturnType Rte_Read_DashboardData(Rte_DashboardDataType *data)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     *data = Rte_DashboardData;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -266,7 +309,9 @@ Std_ReturnType Rte_Read_Environment(Rte_EnvironmentDataType *environment)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     *environment = Rte_EnvironmentData;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -277,7 +322,9 @@ Std_ReturnType Rte_Read_TpmsStatus(Rte_TpmsDataType *tpms)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     *tpms = Rte_TpmsData;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -288,7 +335,9 @@ Std_ReturnType Rte_Read_ConfigData(Rte_ConfigDataType *config)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     *config = Rte_ConfigData;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -299,8 +348,10 @@ Std_ReturnType Rte_Read_RtcTime(RtcIf_TimeType *time, uint8_t *valid)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     *time = Rte_RtcTime;
     *valid = Rte_RtcValid;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -311,7 +362,9 @@ Std_ReturnType Rte_Read_KeyEvent(Rte_KeyEventType *event)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     *event = Rte_KeyEvent;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -322,24 +375,34 @@ Std_ReturnType Rte_Take_KeyEvent(Rte_KeyEventType *event)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     *event = Rte_KeyEvent;
     /*
      * Take 语义用于边沿事件：读出后立即清空。
      * 如果业务只想观察当前槽位而不消费，应调用 Rte_Read_KeyEvent()。
      */
     Rte_KeyEvent = RTE_KEY_EVENT_NONE;
+    Os_ExitCritical();
     return E_OK;
 }
 
 Std_ReturnType Rte_Take_UserInputEvent(Rte_UserInputEventType *event)
 {
-    if ((event == 0) || (Rte_UserInputPending == 0u))
+    if (event == 0)
     {
+        return E_NOT_OK;
+    }
+
+    Os_EnterCritical();
+    if (Rte_UserInputPending == 0u)
+    {
+        Os_ExitCritical();
         return E_NOT_OK;
     }
 
     *event = Rte_UserInputEvent;
     Rte_UserInputPending = 0u;
+    Os_ExitCritical();
     return E_OK;
 }
 
@@ -350,21 +413,38 @@ Std_ReturnType Rte_Read_BacklightLevel(uint8_t *level)
         return E_NOT_OK;
     }
 
+    Os_EnterCritical();
     *level = Rte_BacklightLevel;
+    Os_ExitCritical();
     return E_OK;
 }
 
 uint32_t Rte_GetLastPowertrainRxTick(void)
 {
-    return Rte_LastPowertrainRxTick;
+    uint32_t tick_ms;
+
+    Os_EnterCritical();
+    tick_ms = Rte_LastPowertrainRxTick;
+    Os_ExitCritical();
+    return tick_ms;
 }
 
 uint8_t Rte_IsPowertrainValid(void)
 {
-    return Rte_DashboardData.can_ems_valid;
+    uint8_t valid;
+
+    Os_EnterCritical();
+    valid = Rte_DashboardData.can_ems_valid;
+    Os_ExitCritical();
+    return valid;
 }
 
 uint8_t Rte_IsTpmsValid(void)
 {
-    return Rte_TpmsData.valid;
+    uint8_t valid;
+
+    Os_EnterCritical();
+    valid = Rte_TpmsData.valid;
+    Os_ExitCritical();
+    return valid;
 }

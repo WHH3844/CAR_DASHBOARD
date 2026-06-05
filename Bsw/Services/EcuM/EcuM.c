@@ -118,6 +118,7 @@ void EcuM_Init(void)
     EcuM_NextNvMMs = 0u;
     EcuM_NextLoggerMs = 0u;
 
+    Os_Init();
     EcuM_BootPowerHold();
     LogM_Init();
     LogM_Info("CAR_DASHBOARD architecture main start");
@@ -140,6 +141,20 @@ void EcuM_Init(void)
 #endif
 }
 
+static uint32_t EcuM_GetRuntimeTick(void)
+{
+#if APP_CFG_USE_FREERTOS != 0u
+    EcuM_TickMs = Os_GetTickMs();
+#endif
+
+    return EcuM_TickMs;
+}
+
+static uint8_t EcuM_IsRunnable(void)
+{
+    return (EcuM_State == ECUM_STATE_RUN) ? 1u : 0u;
+}
+
 static void EcuM_Shutdown(void)
 {
     EcuM_State = ECUM_STATE_SLEEP_PREPARE;
@@ -147,10 +162,134 @@ static void EcuM_Shutdown(void)
 
     Rte_Call_Buzzer_Set(0u);
     Rte_Call_Backlight_Set(0u);
-    Dem_SaveNow();
-    NvM_WriteAll();
+
+    if (Os_NvMLock() != 0u)
+    {
+        Dem_SaveNow();
+        NvM_WriteAll();
+        Os_NvMUnlock();
+    }
+    else
+    {
+        LogM_Error("shutdown NvM lock failed");
+    }
 
     PowerIf_Shutdown();
+}
+
+void EcuM_ComMainFunction(void)
+{
+    uint32_t tick_ms;
+
+    tick_ms = EcuM_GetRuntimeTick();
+    if (EcuM_IsRunnable() == 0u)
+    {
+        return;
+    }
+
+    /*
+     * CAN 接收、COM 信号分发、UDS 诊断保持在同一个任务内串行运行。
+     * 这样 CanIf/Com/Dcm/CanTp 不会因为拆任务而出现收发状态并发访问。
+     */
+    CanIf_MainFunction(tick_ms);
+    CanSM_MainFunction(tick_ms);
+    Com_MainFunction(tick_ms);
+    Dcm_MainFunction(tick_ms);
+}
+
+void EcuM_AppFastMainFunction(void)
+{
+    uint32_t tick_ms;
+
+    tick_ms = EcuM_GetRuntimeTick();
+    if (EcuM_IsRunnable() == 0u)
+    {
+        return;
+    }
+
+    App_Power_MainFunction(tick_ms);
+    App_Key_MainFunction(tick_ms);
+    App_Dashboard_MainFunction(tick_ms);
+    App_Diag_MainFunction();
+}
+
+void EcuM_DisplayMainFunction(void)
+{
+    uint32_t tick_ms;
+
+    tick_ms = EcuM_GetRuntimeTick();
+    if (EcuM_IsRunnable() == 0u)
+    {
+        return;
+    }
+
+    App_Display_MainFunction(tick_ms);
+}
+
+void EcuM_SensorMainFunction(void)
+{
+    uint32_t tick_ms;
+
+    tick_ms = EcuM_GetRuntimeTick();
+    if (EcuM_IsRunnable() == 0u)
+    {
+        return;
+    }
+
+    App_Sensor_MainFunction(tick_ms);
+}
+
+void EcuM_NvMMainFunction(void)
+{
+    uint32_t tick_ms;
+
+    tick_ms = EcuM_GetRuntimeTick();
+    if (EcuM_IsRunnable() == 0u)
+    {
+        return;
+    }
+
+    if (Os_NvMLock() == 0u)
+    {
+        return;
+    }
+
+    NvM_MainFunction(tick_ms);
+    Dem_MainFunction(tick_ms);
+    Os_NvMUnlock();
+}
+
+void EcuM_LoggerMainFunction(void)
+{
+    uint32_t tick_ms;
+
+    tick_ms = EcuM_GetRuntimeTick();
+    if (EcuM_IsRunnable() == 0u)
+    {
+        return;
+    }
+
+    App_Logger_MainFunction(tick_ms);
+}
+
+void EcuM_LifecycleMainFunction(void)
+{
+    (void)EcuM_GetRuntimeTick();
+
+    if (EcuM_IsRunnable() == 0u)
+    {
+        return;
+    }
+
+    if (App_Power_IsShutdownRequested() != 0u)
+    {
+        /*
+         * 关机仍由 EcuM 集中处理：先让其它周期任务看到非 RUN 状态，
+         * 再保存 Dem/NvM，最后执行硬件断电。
+         */
+        App_Power_ClearShutdownRequest();
+        EcuM_Shutdown();
+    }
 }
 
 void EcuM_MainFunction(void)
@@ -198,8 +337,12 @@ void EcuM_MainFunction(void)
     {
         /* NvM/Dem 放在同一个较慢周期，减少 EEPROM 访问和主循环抖动。 */
         EcuM_NextNvMMs = EcuM_TickMs + APP_CFG_NVM_PERIOD_MS;
-        NvM_MainFunction(EcuM_TickMs);
-        Dem_MainFunction(EcuM_TickMs);
+        if (Os_NvMLock() != 0u)
+        {
+            NvM_MainFunction(EcuM_TickMs);
+            Dem_MainFunction(EcuM_TickMs);
+            Os_NvMUnlock();
+        }
     }
 
     if (EcuM_TickMs >= EcuM_NextLoggerMs)

@@ -1,5 +1,6 @@
 #include "I2c.h"
 
+#include "Os.h"
 #include "board_pins.h"
 
 #include "gd32f4xx_gpio.h"
@@ -52,7 +53,7 @@ static void I2c0_WaitBusIdle(uint32_t timeout_loop)
     }
 }
 
-void I2c0_Init100K(void)
+static void I2c0_Init100KUnlocked(void)
 {
     rcu_periph_clock_enable(I2C0_GPIO_CLK);
     rcu_periph_clock_enable(I2C0_BUS_CLK);
@@ -73,7 +74,18 @@ void I2c0_Init100K(void)
     i2c_enable(I2C0_BUS);
 }
 
-uint8_t I2c0_ProbeAddress(uint8_t address7, uint32_t timeout_loop)
+void I2c0_Init100K(void)
+{
+    if (Os_I2c0Lock() == 0u)
+    {
+        return;
+    }
+
+    I2c0_Init100KUnlocked();
+    Os_I2c0Unlock();
+}
+
+static uint8_t I2c0_ProbeAddressUnlocked(uint8_t address7, uint32_t timeout_loop)
 {
     uint32_t address8;
 
@@ -125,10 +137,24 @@ uint8_t I2c0_ProbeAddress(uint8_t address7, uint32_t timeout_loop)
     return 0u;
 }
 
-uint8_t I2c0_WriteBytes(uint8_t address7,
-                        const uint8_t *data,
-                        uint8_t len,
-                        uint32_t timeout_loop)
+uint8_t I2c0_ProbeAddress(uint8_t address7, uint32_t timeout_loop)
+{
+    uint8_t result;
+
+    if (Os_I2c0Lock() == 0u)
+    {
+        return 0u;
+    }
+
+    result = I2c0_ProbeAddressUnlocked(address7, timeout_loop);
+    Os_I2c0Unlock();
+    return result;
+}
+
+static uint8_t I2c0_WriteBytesUnlocked(uint8_t address7,
+                                       const uint8_t *data,
+                                       uint8_t len,
+                                       uint32_t timeout_loop)
 {
     uint8_t index;
     uint32_t address8;
@@ -189,10 +215,27 @@ uint8_t I2c0_WriteBytes(uint8_t address7,
     return 1u;
 }
 
-uint8_t I2c0_ReadByteAfterWriteByte(uint8_t address7,
-                                    uint8_t write_byte,
-                                    uint8_t *read_byte,
-                                    uint32_t timeout_loop)
+uint8_t I2c0_WriteBytes(uint8_t address7,
+                        const uint8_t *data,
+                        uint8_t len,
+                        uint32_t timeout_loop)
+{
+    uint8_t result;
+
+    if (Os_I2c0Lock() == 0u)
+    {
+        return 0u;
+    }
+
+    result = I2c0_WriteBytesUnlocked(address7, data, len, timeout_loop);
+    Os_I2c0Unlock();
+    return result;
+}
+
+static uint8_t I2c0_ReadByteAfterWriteByteUnlocked(uint8_t address7,
+                                                   uint8_t write_byte,
+                                                   uint8_t *read_byte,
+                                                   uint32_t timeout_loop)
 {
     uint32_t address8;
 
@@ -275,10 +318,27 @@ uint8_t I2c0_ReadByteAfterWriteByte(uint8_t address7,
     return 1u;
 }
 
-uint8_t I2c0_ReadBytes(uint8_t address7,
-                       uint8_t *data,
-                       uint8_t len,
-                       uint32_t timeout_loop)
+uint8_t I2c0_ReadByteAfterWriteByte(uint8_t address7,
+                                    uint8_t write_byte,
+                                    uint8_t *read_byte,
+                                    uint32_t timeout_loop)
+{
+    uint8_t result;
+
+    if (Os_I2c0Lock() == 0u)
+    {
+        return 0u;
+    }
+
+    result = I2c0_ReadByteAfterWriteByteUnlocked(address7, write_byte, read_byte, timeout_loop);
+    Os_I2c0Unlock();
+    return result;
+}
+
+static uint8_t I2c0_ReadBytesUnlocked(uint8_t address7,
+                                      uint8_t *data,
+                                      uint8_t len,
+                                      uint32_t timeout_loop)
 {
     uint32_t address8;
     uint8_t index;
@@ -422,6 +482,23 @@ uint8_t I2c0_ReadBytes(uint8_t address7,
     i2c_ack_config(I2C0_BUS, I2C_ACK_DISABLE);
     i2c_ackpos_config(I2C0_BUS, I2C_ACKPOS_CURRENT);
     return 1u;
+}
+
+uint8_t I2c0_ReadBytes(uint8_t address7,
+                       uint8_t *data,
+                       uint8_t len,
+                       uint32_t timeout_loop)
+{
+    uint8_t result;
+
+    if (Os_I2c0Lock() == 0u)
+    {
+        return 0u;
+    }
+
+    result = I2c0_ReadBytesUnlocked(address7, data, len, timeout_loop);
+    Os_I2c0Unlock();
+    return result;
 }
 
 uint8_t I2c0_SclIsHigh(void)

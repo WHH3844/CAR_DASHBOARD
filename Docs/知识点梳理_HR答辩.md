@@ -2,7 +2,7 @@
 
 ## 一句话项目介绍
 
-这是一个基于 GD32F470ZGT6 的汽车仪表盘学习板项目。我先完成 PCB 板级 bring-up，验证了电源、SDRAM、RGB LCD、CAN、I2C、EEPROM、RTC、SHT30、TF 卡、按键和蜂鸣器，然后把测试 Demo 迁移到 Mini AUTOSAR-like 分层架构中，实现了 `MCAL -> BSW -> RTE -> APP` 的主线数据流，并加入了基础 UDS 诊断、DTC 和 EEPROM 参数保存。
+这是一个基于 GD32F470ZGT6 的汽车仪表盘学习板项目。我先完成 PCB 板级 bring-up，验证了电源、SDRAM、RGB LCD、CAN、I2C、EEPROM、RTC、SHT30、TF 卡、按键和蜂鸣器，然后把测试 Demo 迁移到 Mini AUTOSAR-like 分层架构中，实现了 `MCAL -> BSW -> RTE -> APP` 的主线数据流，并加入了基础 UDS 诊断、DTC、EEPROM 参数保存和 FreeRTOS 拆分任务调度。当前版本可命名为 `v0.4.0-rtos-split-dashboard`。
 
 ## 为什么不用完整 AUTOSAR
 
@@ -154,23 +154,25 @@ LCD 是 800x480 RGB565 屏，TLI/RGB 输出像素，SDRAM 做 framebuffer。
 
 ## FreeRTOS 移植怎么讲
 
-当前已经把 FreeRTOS 加入工程，但第一版没有急着拆很多任务，而是先创建一个 `EcuM` 主任务承载原来的 10ms 周期调度。
+当前已经把 FreeRTOS 加入工程。移植时第一步先创建一个 `EcuM` 主任务承载原来的 10ms 周期调度，确认 tick、中断向量、堆和任务栈都稳定后，再拆分成多个业务任务。
 
-这样做的原因：
+这样演进的原因：
 
 - 前期板级 bring-up 用裸机更容易定位硬件问题，硬件跑通后再加入 RTOS 更稳。
-- 第一版单任务能验证 FreeRTOS 移植、tick、中断向量、堆和任务栈，同时保持原有业务时序基本不变。
-- LCD framebuffer、I2C、EEPROM、RTE 全局信号还没有加锁，直接拆多任务容易引入并发访问问题。
-- 后续可以再拆成 CAN 任务、显示任务、传感器任务、NvM/诊断任务，并用队列、互斥量或事件组处理共享资源。
+- 第一版单任务能验证 FreeRTOS 移植，同时保持原有业务时序基本不变。
+- 拆任务前先识别共享资源：RTE 全局信号、I2C0 总线、NvM/Dem 状态和 LCD framebuffer。
+- 当前已经补了 RTE 短临界区、I2C0 mutex、NvM mutex，再开启拆分任务。
 
 当前调度：
 
 - FreeRTOS tick：1ms。
-- `EcuM` 主任务：每 10ms 运行一次。
-- 10ms：按键、CAN、Dashboard、诊断入口。
-- 100ms：NvM/Dem 后台处理。
-- 500ms：LCD 主界面刷新。
-- 1000ms：RTC/SHT30、运行日志。
+- `CanTask`：10ms，串行运行 `CanIf/CanSM/Com/Dcm`。
+- `AppFastTask`：10ms，运行电源、按键、Dashboard 和应用诊断入口。
+- `DisplayTask`：500ms，刷新 LCD 仪表界面。
+- `SensorTask`：1000ms，读取 DS3231 RTC 和 SHT30。
+- `NvMTask`：100ms，维护 NvM/Dem 状态。
+- `LoggerTask`：1000ms，输出 runtime heartbeat。
+- `EcuM` 生命周期任务：10ms，集中处理关机保存和断电。
 
 面试回答重点：
 
@@ -179,7 +181,7 @@ LCD 是 800x480 RGB565 屏，TLI/RGB 输出像素，SDRAM 做 framebuffer。
 - `SysTick_Handler` 提供 RTOS tick。
 - 本项目使用 `heap_4.c` 做动态内存管理，适合有创建/释放需求且能合并空闲块的场景。
 - 配置了 malloc failed hook 和 stack overflow hook，便于发现堆不足和任务栈溢出。
-- 如果板上 RTOS 出问题，可以把 `APP_CFG_USE_FREERTOS` 改为 `0u` 回退裸机，对比判断是业务问题还是 RTOS 移植问题。
+- 如果板上多任务出问题，可以先把 `APP_CFG_FREERTOS_SPLIT_TASKS` 改为 `0u` 回退单 `EcuM` 主任务；如果还不稳定，再把 `APP_CFG_USE_FREERTOS` 改为 `0u` 回退裸机，对比判断是业务问题、任务拆分问题还是 RTOS 移植问题。
 
 ## HR 可能问：你遇到过什么难点
 
@@ -200,5 +202,5 @@ LCD 是 800x480 RGB565 屏，TLI/RGB 输出像素，SDRAM 做 framebuffer。
 - 设计并实现 Mini AUTOSAR-like 软件分层。
 - 实现 CAN 信号解析、RTE 信号接口、Dashboard APP。
 - 实现基础 UDS 诊断、Dem 故障管理和 NvM EEPROM 保存。
-- 移植 FreeRTOS，并用单 `EcuM` 主任务保持原 10ms 调度节拍。
+- 移植 FreeRTOS，先用单 `EcuM` 主任务验证移植，再拆成 CAN、应用、显示、传感器、NvM、日志和生命周期任务。
 - 编写测试步骤和调试记录，能用 PCAN/Keil/串口复现。

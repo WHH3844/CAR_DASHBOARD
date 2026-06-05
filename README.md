@@ -4,7 +4,7 @@
 
 本项目目标不是实现完整商用 AUTOSAR，而是基于 AUTOSAR Classic 的分层思想，搭建一个适合学习、调试、硬件验证和后续扩展的轻量化汽车仪表盘软件架构。
 
-当前项目仍在开发中，PCB 一版板级测试已经完成，电源、串口、SDRAM、LCD、CAN、I2C、EEPROM、RTC、SHT30、TF 卡、按键蜂鸣器和整板 Demo 均已跑通。当前重点已经从“硬件 bring-up”切换到“正式软件架构落地”。
+当前项目仍在开发中，PCB 一版板级测试已经完成，电源、串口、SDRAM、LCD、CAN、I2C、EEPROM、RTC、SHT30、TF 卡、按键蜂鸣器和整板 Demo 均已跑通。当前重点已经从“硬件 bring-up”切换到“正式软件架构 + FreeRTOS 任务化运行”的稳定性验证。
 
 ## 项目定位
 
@@ -30,9 +30,24 @@
 - 已完成 12 个分阶段板级测试，硬件通路确认可用。
 - `main.c` 已切换为正式架构入口，只调用 `EcuM_Init()` 和 `EcuM_MainLoop()`。
 - 已完成第一版 Mini AUTOSAR-like 主线：`EcuM -> BSW/RTE -> APP`。
-- 已移植 FreeRTOS，当前默认由一个 `EcuM` 主任务承载原来的 10ms 周期调度，同时保留裸机 super loop 回退开关。
+- 已移植 FreeRTOS，当前默认开启拆分任务模式：`CanTask`、`AppFastTask`、`DisplayTask`、`SensorTask`、`NvMTask`、`LoggerTask` 和 `EcuM` 生命周期任务。
+- 已给 RTE 全局信号、I2C0 总线、NvM/Dem 保存路径补充临界区或 mutex，降低任务拆分后的共享资源竞争风险。
+- 已补齐当前教学版 CAN 矩阵：`0x321~0x324` 输入解析，`0x325~0x328` 仪表输出，`0x440` 简化 NM，`0x700/0x708` 诊断。
+- LCD 已升级为定制仪表盘界面，显示左右表盘、中央车速/档位、CAN/SIM 状态、告警灯、燃油、水温、电压、RTC、座舱温湿度和 TPMS。
 
-## 2026-06-03 架构落地功能
+## 当前版本命名
+
+当前建议命名为：
+
+```text
+v0.4.0-rtos-split-dashboard
+```
+
+版本代号：`RTOS Split Dashboard`
+
+这个名字对应当前状态：硬件 bring-up 已完成，正式 Mini AUTOSAR-like 主线已落地，FreeRTOS 从单 `EcuM` 主任务升级为多任务拆分，Dashboard UI、CAN、UDS、Dem、NvM、RTC/SHT30/TPMS 等功能已经形成可演示闭环。
+
+## 2026-06-03 至 2026-06-05 架构落地功能
 
 本轮把之前 `Test/12_dashboard_demo` 的整板联调能力，拆分进正式分层架构：
 
@@ -49,18 +64,19 @@ PduR
 已实现内容：
 
 - `EcuM`：负责早期 `PWR_HOLD` 自锁、启动初始化顺序、RUN 状态周期调度、长按电源键关机保存。
-- `Os`：默认创建 FreeRTOS `EcuM` 主任务，使用 RTOS tick 做 10ms 调度；`APP_CFG_USE_FREERTOS=0` 时可回退到裸机 super loop。
+- `Os`：默认创建 FreeRTOS 拆分任务；`APP_CFG_FREERTOS_SPLIT_TASKS=0u` 可回退到单 `EcuM` 主任务，`APP_CFG_USE_FREERTOS=0u` 可回退到裸机 super loop。
 - `RTE`：提供车速、转速、油量、水温、电压、RTC、温湿度、按键、背光、蜂鸣器、报警状态等信号接口。
 - `CanIf / CanTrcv / CanSM`：封装 CAN1 500K 初始化、标准帧收发、SIT1043QT EN/STB_N/ERR_N 控制和基础通信状态。
-- `PduR / Com`：按 CAN ID 路由，解析 `0x321/0x322/0x324`，并周期发送 `0x325/0x326/0x440`。
+- `PduR / Com`：按 CAN ID 路由，解析 `0x321/0x322/0x323/0x324`，并周期或事件发送 `0x325/0x326/0x327/0x328/0x440`。
 - `CanTp / Dcm`：实现教学版 UDS 单帧诊断，支持 `0x10`、`0x22`、`0x19`、`0x14`、`0x3E`。
 - `Dem`：实现 20 个 DTC 的状态、确认位、报警灯位、发生次数、清故障和按状态掩码查询。
 - `NvM`：用 FT24C16A EEPROM 保存启动次数、系统配置和 DTC 状态，每个块带 magic/version/length/CRC16。
 - `SdramMgr / SdramIf`：封装已验证的 EXMC SDRAM 初始化和 framebuffer 地址。
 - `LcdIf / BacklightIf`：封装 LCD 初始化、局部矩形刷新、文本绘制和背光开关/亮度接口。
 - `App_Dashboard`：处理 KEY1 模拟模式、KEY2 静音、KEY3 清零、超速/高转速报警和蜂鸣器控制。
-- `App_Display`：周期刷新 LCD 主界面，显示车速、转速、CAN 状态、RTC、温湿度、报警/静音状态。
+- `App_Display`：周期刷新 LCD 主界面，显示车速、转速、档位、CAN 状态、RTC、温湿度、TPMS、报警/静音状态。
 - `App_Sensor`：周期读取 DS3231 和 SHT30，并把通信失败/时间非法写入 Dem。
+- `App_Logger`：周期输出 heartbeat，并通过 `0x328` 上报教学版日志状态和运行秒数。
 
 本轮 Keil 命令行构建已通过核心编译链接流程，生成 `CAR_DASHBOARD.hex`。构建命令：
 
@@ -68,7 +84,7 @@ PduR
 D:\Keil5\UV4\UV4.exe -b D:\MCU\Project\car\CAR_DASHBOARD\Project\CAR_DASHBOARD.uvprojx -j0 -o D:\MCU\Project\car\CAR_DASHBOARD\Project\Objects\codex_build.log
 ```
 
-## 2026-06-03 FreeRTOS 移植状态
+## 2026-06-03 至 2026-06-04 FreeRTOS 移植状态
 
 本轮已把 `D:\MCU\FreeRTOSv202212.01\FreeRTOS\Source` 中的最小内核源码移入工程，当前选择：
 
@@ -77,14 +93,15 @@ D:\Keil5\UV4\UV4.exe -b D:\MCU\Project\car\CAR_DASHBOARD\Project\CAR_DASHBOARD.u
 - 配置文件：`Config/FreeRTOSConfig.h`
 - 兼容旧路径：`Os/FreeRTOSConfig.h` 只转发到 `Config/FreeRTOSConfig.h`
 - 默认开关：`Config/App_Cfg.h` 中 `APP_CFG_USE_FREERTOS=1u`
+- 任务拆分开关：`Config/App_Cfg.h` 中 `APP_CFG_FREERTOS_SPLIT_TASKS=1u`
 
-当前没有急着拆成很多任务，而是先创建一个 `EcuM` 主任务，让原来已经验证过的 10ms 调度继续按固定节拍运行。这样既能体现 RTOS 移植，又不会马上引入 LCD、I2C、EEPROM、RTE 共享访问的并发风险。
+当前默认运行在 FreeRTOS 拆分任务模式。通信栈仍放在同一个 `CanTask` 内串行运行，避免 `CanIf/Com/Dcm/CanTp` 并发访问；应用快任务、显示、传感器、NvM/Dem、日志和生命周期管理分开调度。若需要排查问题，可把 `APP_CFG_FREERTOS_SPLIT_TASKS` 改为 `0u` 回退到单 `EcuM` 主任务。
 
 板上启动后串口应能看到：
 
 ```text
 EcuM enter RUN, FreeRTOS enabled
-Os creating FreeRTOS EcuM task
+Os creating split FreeRTOS tasks
 ```
 
 若需要排查 RTOS tick、任务栈或中断优先级问题，可以临时把 `APP_CFG_USE_FREERTOS` 改为 `0u`，工程会回退到裸机 super loop，便于对比定位。
@@ -93,7 +110,7 @@ Os creating FreeRTOS EcuM task
 
 1. 用 Keil 打开 `Project/CAR_DASHBOARD.uvprojx`，全量 Rebuild。
 2. 烧录 `Project/Objects/CAR_DASHBOARD.hex`。
-3. 打开串口 `115200 8N1`，上电后应看到 `CAR_DASHBOARD architecture main start`、`NvM init ok`、`Dem init ok`、`EcuM enter RUN, FreeRTOS enabled`、`Os creating FreeRTOS EcuM task` 等日志。
+3. 打开串口 `115200 8N1`，上电后应看到 `CAR_DASHBOARD architecture main start`、`NvM init ok`、`Dem init ok`、`EcuM enter RUN, FreeRTOS enabled`、`Os creating split FreeRTOS tasks` 等日志。
 4. LCD 应显示正式 Dashboard 主界面，而不是旧的测试 Demo 入口。
 5. PCAN/USB-CAN 使用标准帧、500K，周期发送 `0x321`，DLC=8：
 
@@ -206,7 +223,9 @@ KEY3：清零当前仪表值
 - 业务逻辑尽量通过 RTE 读写信号或调用服务
 - MCAL 只负责 MCU 外设和硬件资源
 - BSW 负责通信、存储、诊断、电源、抽象接口等基础服务
-- 当前默认运行在 FreeRTOS 单任务模式，底层调试需要隔离 RTOS 变量时可回退到裸机 super loop
+- 当前默认运行在 FreeRTOS 拆分任务模式；需要隔离 RTOS 变量时可回退到单 `EcuM` 任务或裸机 super loop
+
+更完整的软件架构和功能架构梳理见 `Docs/软件架构与功能架构.md`。
 
 ## 目录结构
 
@@ -221,11 +240,13 @@ CAR_DASHBOARD/
 ├── Config/              # 模块配置头文件
 ├── Firmware/            # GD32F4xx CMSIS、标准外设库、USB 库
 ├── Mcal/                # MCU 抽象层驱动
-├── Os/                  # 简单调度或后续 RTOS 适配
+├── Os/                  # FreeRTOS 适配、任务创建、临界区和 mutex 抽象
 ├── Project/             # Keil MDK 工程文件
 ├── Rte/                 # 运行时环境接口
 ├── Stub/                # 无硬件时的模拟输入/输出
 ├── Test/                # 分阶段硬件测试程序
+├── Docs/                # 架构、测试、调试和答辩文档
+├── c语言语法学习.md    # 本工程涉及的 C 语言语法学习笔记
 ├── main.c               # 当前最小入口
 └── 进度.md              # 开发记录
 ```
@@ -268,18 +289,25 @@ PCB 回来后不要一次性焊满、一次性上电。推荐流程：
 
 首次上电必须使用可调电源限流，并优先确认 `12V_SYS`、`5V_SYS`、`3V3_SYS` 是否正常。
 
-## 计划中的 CAN 信号
+## 当前 CAN 信号
 
-第一版 Demo 可先使用模拟 CAN 报文：
+当前正式架构已不再使用旧 Demo 的 `0x100/0x101`。教学版 CAN 矩阵如下：
 
-| CAN ID | 周期 | 内容 |
-|---|---|---|
-| `0x100` | 10ms | 车速、转速、油量、水温、报警标志 |
-| `0x101` | 100ms | 电池电压、点火状态、电源模式、背光亮度 |
-| `0x7E0` | 按需 | 诊断请求 |
-| `0x7E8` | 按需 | 诊断响应 |
+| CAN ID | 方向 | 周期 / 触发 | 当前状态 |
+|---|---|---|---|
+| `0x321` | 外部 ECU/PCAN -> 仪表 | 20ms | 已解析车速、转速、油量、水温、外温、电压 |
+| `0x322` | 外部 ECU/PCAN -> 仪表 | 100ms | 已解析点火、档位和告警灯位 |
+| `0x323` | 外部 ECU/PCAN -> 仪表 | 1000ms | 已解析四轮胎压和胎温，并在 LCD 显示 |
+| `0x324` | 外部 ECU/PCAN -> 仪表 | 500ms | 已解析主题、语言、单位、背光、音量、续航和外部时间 |
+| `0x325` | 仪表 -> 总线 | 100ms | 周期发送车速、转速、报警、静音、模拟模式和动力 CAN 有效位 |
+| `0x326` | 仪表 -> 总线 | 1000ms | 周期发送 DTC 数量、诊断会话和动力 CAN 有效位 |
+| `0x327` | 仪表 -> 总线 | 按键事件 | KEY1/KEY2/KEY3 触发时发送用户输入事件 |
+| `0x328` | 仪表 -> 总线 | 1000ms | 周期发送教学版日志状态和运行秒数 |
+| `0x440` | 仪表 -> 总线 | 1000ms | 简化 NM/RUN 状态心跳 |
+| `0x700/0x708` | Tester <-> 仪表 | 按需 | 教学版 UDS 单帧物理请求和响应 |
+| `0x7DF` | Tester -> 仪表 | 按需 | 教学版 UDS 功能寻址请求 |
 
-后续数据流目标：
+当前业务数据流：
 
 ```text
 CAN 总线
@@ -343,7 +371,14 @@ LcdIf / BacklightIf / BuzzerIf
 Project/CAR_DASHBOARD.uvprojx
 ```
 
-由于大部分模块仍是骨架代码，当前工程更适合作为目录模板和后续 bring-up 的起点。等板子回来后，应优先补齐最小系统、UART、DIO、PWR_HOLD 等底层代码，再逐步接入其他模块。
+推荐流程：
+
+1. 用 Keil MDK 打开 `Project/CAR_DASHBOARD.uvprojx`。
+2. 确认 `Config/App_Cfg.h` 中 `APP_CFG_USE_FREERTOS=1u`，`APP_CFG_FREERTOS_SPLIT_TASKS=1u`。
+3. 全量 Rebuild，生成 `Project/Objects/CAR_DASHBOARD.hex`。
+4. 烧录后通过串口、LCD、PCAN 和 UDS 请求验证运行状态。
+
+最近一次记录的拆分任务版本构建日志为 `Project/Objects/codex_task_split_build.log`，结果为 `0 Error(s), 0 Warning(s)`。
 
 ## 注意事项
 
@@ -353,7 +388,7 @@ Project/CAR_DASHBOARD.uvprojx
 - I2C 调试建议先做总线扫描，再逐个验证 EEPROM、RTC、SHT30
 - EEPROM 不要高频写入，后续应通过 NvM 做延迟写和 CRC 校验
 - TF 卡和日志功能不影响第一阶段主功能，可放到后面
-- FreeRTOS 已加入工程，但第一版先采用单 `EcuM` 主任务，避免过早拆多任务导致 LCD/I2C/EEPROM 并发访问难排查
+- FreeRTOS 当前默认拆分任务，若出现 LCD、I2C、EEPROM 或 RTE 相关异常，先回退 `APP_CFG_FREERTOS_SPLIT_TASKS=0u` 做对比
 
 ## 进度记录
 
@@ -373,7 +408,7 @@ PCB 板级硬件通路已完成第一轮验证，工程已从 `12_dashboard_demo
 
 - `main.c` 只保留入口，启动流程交给 `EcuM_Init()`，运行调度交给 `Os_Start()`。
 - `EcuM` 管理上电自锁、初始化顺序、自检状态、RUN 状态和周期调度。
-- `Os` 默认使用 FreeRTOS 单 `EcuM` 主任务运行 10ms 调度；`APP_CFG_USE_FREERTOS=0` 可回退到裸机 super loop。
+- `Os` 默认使用 FreeRTOS 拆分任务运行；`APP_CFG_FREERTOS_SPLIT_TASKS=0u` 可回退到单 `EcuM` 任务，`APP_CFG_USE_FREERTOS=0u` 可回退到裸机 super loop。
 - `CanIf/CanTrcv/PduR/CanTp/Com` 已形成 CAN 通信主线。
 - `RTE` 已提供车速、转速、电压、RTC、温湿度、按键、蜂鸣器、CAN 有效性等信号。
 - `Dcm` 支持教学级 UDS 单帧服务：`0x10`、`0x22`、`0x19`、`0x14`、`0x3E`。
@@ -384,5 +419,7 @@ PCB 板级硬件通路已完成第一轮验证，工程已从 `12_dashboard_demo
 新增文档：
 
 - `Docs/架构落地调试记录.md`
-- `Docs/知识点梳理_HR问答.md`
+- `Docs/知识点梳理_HR答辩.md`
 - `Docs/架构版测试步骤.md`
+- `Docs/软件架构与功能架构.md`
+- `c语言语法学习.md`

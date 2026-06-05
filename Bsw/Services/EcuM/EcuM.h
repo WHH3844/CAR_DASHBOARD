@@ -29,6 +29,18 @@ void EcuM_Init(void);
 /* 主调度函数，由 Os_Start() 创建的 FreeRTOS 任务或裸机 super loop 周期调用。 */
 void EcuM_MainFunction(void);
 
+/*
+ * FreeRTOS 拆分任务入口。
+ * 通信栈仍保持在同一个 CanTask 中，避免 CanIf/Com/Dcm/CanTp 并发访问。
+ */
+void EcuM_ComMainFunction(void);
+void EcuM_AppFastMainFunction(void);
+void EcuM_DisplayMainFunction(void);
+void EcuM_SensorMainFunction(void);
+void EcuM_NvMMainFunction(void);
+void EcuM_LoggerMainFunction(void);
+void EcuM_LifecycleMainFunction(void);
+
 /* 进入 OS 调度；根据 APP_CFG_USE_FREERTOS 选择 FreeRTOS 或裸机循环。 */
 void EcuM_MainLoop(void);
 

@@ -16,7 +16,7 @@
 #define configTICK_RATE_HZ                      ((TickType_t)1000)
 #define configMAX_PRIORITIES                    5
 #define configMINIMAL_STACK_SIZE                ((uint16_t)128)
-#define configTOTAL_HEAP_SIZE                   ((size_t)(24u * 1024u))
+#define configTOTAL_HEAP_SIZE                   ((size_t)(32u * 1024u))
 /*
  * 目前只创建 EcuM 主任务，24KB heap 主要覆盖任务栈和内核对象。
  * 如果后续拆分显示、CAN、传感器任务，需要同步复核 heap 和各任务栈深度。
