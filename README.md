@@ -32,20 +32,46 @@
 - 已完成第一版 Mini AUTOSAR-like 主线：`EcuM -> BSW/RTE -> APP`。
 - 已移植 FreeRTOS，当前默认开启拆分任务模式：`CanTask`、`AppFastTask`、`DisplayTask`、`SensorTask`、`NvMTask`、`LoggerTask` 和 `EcuM` 生命周期任务。
 - 已给 RTE 全局信号、I2C0 总线、NvM/Dem 保存路径补充临界区或 mutex，降低任务拆分后的共享资源竞争风险。
-- 已补齐当前教学版 CAN 矩阵：`0x321~0x324` 输入解析，`0x325~0x328` 仪表输出，`0x440` 简化 NM，`0x700/0x708` 诊断。
-- LCD 已升级为定制仪表盘界面，显示左右表盘、中央车速/档位、CAN/SIM 状态、告警灯、燃油、水温、电压、RTC、座舱温湿度和 TPMS。
+- 已完成 CAN / UDS / Dem / NvM 正式审计并发布接口 v1.0：`0x321~0x324/0x329/0x441` 输入，`0x325~0x328/0x440` 输出，`0x700/0x708/0x7DF` 诊断。
+- LCD 已升级为定制仪表盘界面，显示左右表盘、中央车速/档位、CAN/SIM、控制域在线/输入/电源/远端故障、车身告警、燃油、水温、电压、RTC、座舱温湿度和逐轮 TPMS。
+- 表盘单位已避开圆弧/刻度，顶部关键告警使用 LcdIf 原生矢量图标绘制，无需引入 LVGL 或外部位图资源。
+
+## 2026-07-29 CAN / 诊断接口正式审计 v1.0
+
+本轮以源码、Keil 工程、两份原始 Excel 和 S32K144 原理图 9 页为输入，完成了 As-Built / Target 差异审计并固化接口：
+
+- CAN：原矩阵与代码确认 60 项信号级差异；补齐 `0x322` 17 个车身信号、`0x323` 逐轮有效性、`0x441` NM 在线监督，并新增 `0x329 CDM_Status_500ms`。
+- 有效性：`0x321` 车速先做 13-bit 掩码和无效值判断；六个动力信号分别维护有效位，超时后 UI 显示无效状态，不把无效 raw 换算成异常大数。
+- 发送：`0x325/0x326` 按 v1.0 矩阵重构；`0x327` 发送失败保留重试；`0x440` 节点地址修正为 `0x40` 和 NormalOperation。
+- 控制域：`0x329` 使用 InterfaceVersion、AliveCounter 和 CRC8/J1850；`0x441` 只做 NM，应用健康与 NM 在线分离。
+- UDS：DID 使用唯一命名空间，运行数据迁移到 `0xF200` 段；多字节数值改为 Big-Endian；`0x7DF` 仅允许 `0x22/0x19/0x3E`。
+- Dem/NvM：Dem 增加逐事件失败/通过去抖阈值；NvM 实际块固定为 BootInfo@`0x700`、SystemConfig@`0x720`、DemStatus@`0x740`。
+- 构建：Keil ARMCC 5.06 update 7 全量构建结果为 `0 Error(s), 0 Warning(s)`，日志为 `Project/Objects/interface_v1_build.log`。
+
+正式交付文件：
+
+- `Docs/Analysis/01_CAN代码与矩阵差异报告.md`
+- `Docs/Analysis/02_诊断代码与矩阵差异报告.md`
+- `Docs/Analysis/03_仪表盘工程完整性评估.md`
+- `Docs/Analysis/04_S32K144对接功能评估.md`
+- `Docs/Analysis/05_仪表盘定版测试计划.md`
+- `Docs/Interface/GD32_S32K144_Interface_v1.0.md`
+- `Docs/Interface/汽车仪表盘_CAN报文矩阵_v1.0.xlsx`
+- `Docs/Interface/汽车仪表盘_诊断需求矩阵_v1.0.xlsx`
+
+S32K144 P0 注意：原理图实际按键为 `KEY1=PTC13, KEY2=PTB2, KEY3=PTB3, KEY4=PTC14, KEY5=PTC15`，而 `PTC12=CAN2_ERRN`。该结论已写入接口评估，本工程没有修改任何 S32K144 代码。
 
 ## 当前版本命名
 
 当前建议命名为：
 
 ```text
-v0.4.0-rtos-split-dashboard
+v0.5.0-interface-v1.0
 ```
 
-版本代号：`RTOS Split Dashboard`
+版本代号：`Interface Audit v1.0`
 
-这个名字对应当前状态：硬件 bring-up 已完成，正式 Mini AUTOSAR-like 主线已落地，FreeRTOS 从单 `EcuM` 主任务升级为多任务拆分，Dashboard UI、CAN、UDS、Dem、NvM、RTC/SHT30/TPMS 等功能已经形成可演示闭环。
+这个名字对应当前状态：硬件 bring-up 和 FreeRTOS 拆分任务已完成，CAN/UDS/Dem/NvM 已经过一次正式接口审计并发布 v1.0，代码、矩阵、接口协议和测试计划已对齐。
 
 ## 2026-06-03 至 2026-06-05 架构落地功能
 
@@ -133,7 +159,7 @@ Battery raw=0x78，当前按 0.1V/bit = 12.0V
 ```text
 进入扩展会话：02 10 03 00 00 00 00 00 -> 03 50 03 00 32 13 88 00
 TesterPresent：02 3E 00 00 00 00 00 00 -> 02 7E 00 00 00 00 00 00
-读车速 DID ：03 22 F1 81 00 00 00 00 -> 05 62 F1 81 xx xx 00 00
+读车速 DID ：03 22 F2 01 00 00 00 00 -> 05 62 F2 01 xx xx 00 00（xx xx 为 Big-Endian）
 读 DTC 数量：03 19 01 FF 00 00 00 00 -> 05 59 01 FF 00 nn 00 00
 清全部 DTC ：04 14 FF FF FF 00 00 00 -> 01 54 00 00 00 00 00 00
 ```
@@ -295,17 +321,19 @@ PCB 回来后不要一次性焊满、一次性上电。推荐流程：
 
 | CAN ID | 方向 | 周期 / 触发 | 当前状态 |
 |---|---|---|---|
-| `0x321` | 外部 ECU/PCAN -> 仪表 | 20ms | 已解析车速、转速、油量、水温、外温、电压 |
-| `0x322` | 外部 ECU/PCAN -> 仪表 | 100ms | 已解析点火、档位和告警灯位 |
-| `0x323` | 外部 ECU/PCAN -> 仪表 | 1000ms | 已解析四轮胎压和胎温，并在 LCD 显示 |
-| `0x324` | 外部 ECU/PCAN -> 仪表 | 500ms | 已解析主题、语言、单位、背光、音量、续航和外部时间 |
-| `0x325` | 仪表 -> 总线 | 100ms | 周期发送车速、转速、报警、静音、模拟模式和动力 CAN 有效位 |
-| `0x326` | 仪表 -> 总线 | 1000ms | 周期发送 DTC 数量、诊断会话和动力 CAN 有效位 |
+| `0x321` | 外部 ECU/PCAN -> 仪表 | 20ms | 六个动力信号逐项无效值判断，100ms 超时 |
+| `0x322` | 外部 ECU/PCAN -> 仪表 | 100ms | 完整解析 17 个车身/灯光/报警信号 |
+| `0x323` | 外部 ECU/PCAN -> 仪表 | 1000ms | 四轮压力/温度逐轮有效和报警 |
+| `0x324` | 外部 ECU/PCAN -> 仪表 | 500ms | 合法远端配置作运行期覆盖，本机 NvM 是上电基线 |
+| `0x325` | 仪表 -> 总线 | 100ms | ICM 模式、页面、蜂鸣器、背光、里程无效值、驾驶时间和关机/故障灯请求 |
+| `0x326` | 仪表 -> 总线 | 1000ms | DTC、LastFaultId、上电次数、自检、CAN、会话和 NvM 状态 |
 | `0x327` | 仪表 -> 总线 | 按键事件 | KEY1/KEY2/KEY3 触发时发送用户输入事件 |
-| `0x328` | 仪表 -> 总线 | 1000ms | 周期发送教学版日志状态和运行秒数 |
-| `0x440` | 仪表 -> 总线 | 1000ms | 简化 NM/RUN 状态心跳 |
+| `0x328` | 仪表 -> 总线 | 1000ms | 明确发送未挂载/Stub 日志状态和运行秒数 |
+| `0x329` | S32K144/CDM -> 仪表 | 500ms | 控制域输入/电源/健康/远端故障、AliveCounter、CRC8 |
+| `0x440` | 仪表 -> 总线 | 1000ms | ICM 节点 `0x40` NM NormalOperation |
+| `0x441` | S32K144/CDM -> 仪表 | 1000ms | CDM NM 在线监督，3000ms 超时 |
 | `0x700/0x708` | Tester <-> 仪表 | 按需 | 教学版 UDS 单帧物理请求和响应 |
-| `0x7DF` | Tester -> 仪表 | 按需 | 教学版 UDS 功能寻址请求 |
+| `0x7DF` | Tester -> 仪表 | 按需 | 功能寻址只读白名单：`0x22/0x19/0x3E` |
 
 当前业务数据流：
 
@@ -378,7 +406,7 @@ Project/CAR_DASHBOARD.uvprojx
 3. 全量 Rebuild，生成 `Project/Objects/CAR_DASHBOARD.hex`。
 4. 烧录后通过串口、LCD、PCAN 和 UDS 请求验证运行状态。
 
-最近一次记录的拆分任务版本构建日志为 `Project/Objects/codex_task_split_build.log`，结果为 `0 Error(s), 0 Warning(s)`。
+最近一次接口 v1.0 全量构建日志为 `Project/Objects/interface_v1_build.log`，结果为 `0 Error(s), 0 Warning(s)`。
 
 ## 注意事项
 

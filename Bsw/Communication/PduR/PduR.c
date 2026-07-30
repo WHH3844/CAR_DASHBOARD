@@ -19,8 +19,8 @@ void PduR_RxIndication(const CanIf_PduType *pdu, uint32_t tick_ms)
         (pdu->id == CAN_ID_DIAG_PHYSICAL_REQ))
     {
         /*
-         * 功能寻址和物理寻址都交给 CanTp。
-         * Dcm 目前没有区分两者的服务权限，但保留 rx_can_id 便于后续扩展。
+         * 功能寻址和物理寻址都交给 CanTp，Dcm 根据 rx_can_id
+         * 对 0x7DF 应用只读服务白名单。
          */
         CanTp_RxIndication(pdu, tick_ms);
     }

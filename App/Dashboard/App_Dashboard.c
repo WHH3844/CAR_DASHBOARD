@@ -18,6 +18,7 @@ static uint32_t App_Dashboard_BeepUntilMs;
 void App_Dashboard_Init(void)
 {
     const NvM_SystemConfigType *config;
+    Rte_ConfigDataType rte_config;
 
     config = Rte_Call_NvM_GetSystemConfig();
     App_Dashboard_SimMode = 0u;
@@ -27,6 +28,21 @@ void App_Dashboard_Init(void)
     App_Dashboard_BeepUntilMs = 0u;
     (void)Rte_Write_BuzzerMuted(App_Dashboard_BuzzerMuted);
     (void)Rte_Write_BacklightLevel(config->backlight_level);
+
+    /*
+     * 本机 NvM 是上电配置基线。0x324 只在收到合法帧后做运行期覆盖，
+     * 重启后仍从这份持久配置开始。
+     */
+    rte_config.theme_mode = config->theme;
+    rte_config.language = config->language;
+    rte_config.unit_mode = 0u;
+    rte_config.warning_volume = (config->buzzer_enable != 0u) ? 100u : 0u;
+    rte_config.driving_range_km = 0xFFFFu;
+    rte_config.datetime_valid = 0u;
+    rte_config.time_hour = 0u;
+    rte_config.time_minute = 0u;
+    rte_config.remote_valid = 0u;
+    (void)Rte_Write_ConfigData(&rte_config, 0u);
 }
 
 static void App_Dashboard_HandleKey(uint32_t tick_ms)
@@ -76,6 +92,7 @@ static void App_Dashboard_UpdateSimulation(uint32_t tick_ms)
     Rte_DashboardDataType data;
     uint16_t speed;
     uint16_t rpm;
+    uint8_t validity_mask;
 
     if ((App_Dashboard_SimMode == 0u) || (tick_ms < App_Dashboard_NextSimMs))
     {
@@ -123,12 +140,31 @@ static void App_Dashboard_UpdateSimulation(uint32_t tick_ms)
         rpm = APP_CFG_RPM_MAX;
     }
 
+    validity_mask = RTE_POWERTRAIN_VALID_SPEED | RTE_POWERTRAIN_VALID_RPM;
+    if (data.fuel_percent_valid != 0u)
+    {
+        validity_mask |= RTE_POWERTRAIN_VALID_FUEL;
+    }
+    if (data.coolant_temp_valid != 0u)
+    {
+        validity_mask |= RTE_POWERTRAIN_VALID_COOLANT;
+    }
+    if (data.outdoor_temp_valid != 0u)
+    {
+        validity_mask |= RTE_POWERTRAIN_VALID_OUTDOOR;
+    }
+    if (data.battery_voltage_valid != 0u)
+    {
+        validity_mask |= RTE_POWERTRAIN_VALID_BATTERY;
+    }
+
     (void)Rte_Write_Powertrain(speed,
                                rpm,
                                data.fuel_percent,
                                data.coolant_temp_c,
                                data.outdoor_temp_c,
                                data.battery_mv,
+                               validity_mask,
                                tick_ms);
 }
 
@@ -139,8 +175,10 @@ static void App_Dashboard_UpdateAlarm(uint32_t tick_ms)
     uint8_t buzzer_on;
 
     (void)Rte_Read_DashboardData(&data);
-    alarm = ((data.vehicle_speed_kph_x10 >= APP_CFG_SPEED_ALARM_KPH_X10) ||
-             (data.engine_rpm >= APP_CFG_RPM_ALARM)) ? 1u : 0u;
+    alarm = (((data.vehicle_speed_valid != 0u) &&
+              (data.vehicle_speed_kph_x10 >= APP_CFG_SPEED_ALARM_KPH_X10)) ||
+             ((data.engine_rpm_valid != 0u) &&
+              (data.engine_rpm >= APP_CFG_RPM_ALARM))) ? 1u : 0u;
     (void)Rte_Write_AlarmActive(alarm);
 
     /*

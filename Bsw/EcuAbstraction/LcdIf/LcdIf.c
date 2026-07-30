@@ -238,6 +238,49 @@ void LcdIf_DrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t col
     }
 }
 
+void LcdIf_DrawCircle(int32_t center_x, int32_t center_y, int32_t radius, uint16_t color)
+{
+    int32_t x;
+    int32_t y;
+    int32_t error;
+
+    if ((LcdIf_Ready == 0u) || (radius <= 0))
+    {
+        return;
+    }
+
+    /*
+     * 中点圆算法只计算一个八分圆，再镜像到其它象限。
+     * LcdIf_SetPixel 自带屏幕裁剪，因此贴边图标也不会写越界。
+     */
+    x = radius;
+    y = 0;
+    error = 1 - radius;
+
+    while (x >= y)
+    {
+        LcdIf_SetPixel(center_x + x, center_y + y, color);
+        LcdIf_SetPixel(center_x + y, center_y + x, color);
+        LcdIf_SetPixel(center_x - y, center_y + x, color);
+        LcdIf_SetPixel(center_x - x, center_y + y, color);
+        LcdIf_SetPixel(center_x - x, center_y - y, color);
+        LcdIf_SetPixel(center_x - y, center_y - x, color);
+        LcdIf_SetPixel(center_x + y, center_y - x, color);
+        LcdIf_SetPixel(center_x + x, center_y - y, color);
+
+        y++;
+        if (error < 0)
+        {
+            error += (2 * y) + 1;
+        }
+        else
+        {
+            x--;
+            error += (2 * (y - x)) + 1;
+        }
+    }
+}
+
 static uint32_t LcdIf_DrawChar(uint32_t x, uint32_t y, char ch, uint8_t scale, uint16_t color)
 {
     const uint8_t *glyph;

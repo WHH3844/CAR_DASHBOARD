@@ -38,6 +38,9 @@ typedef struct
     uint32_t dtc;
     uint8_t level;
     uint8_t lamp_flag;
+    /* 连续失败/通过样本达到阈值后才改变 testFailed，防止一次抖动即确认。 */
+    uint8_t failed_threshold;
+    uint8_t passed_threshold;
 } Dem_EventConfigType;
 
 #endif /* DEM_CFG_H */

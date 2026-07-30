@@ -225,7 +225,7 @@ static void NvM_LoadOrDefaultSystemConfig(void)
         NvM_SystemConfig.backlight_level = NVM_CFG_SYSTEM_BACKLIGHT_DEFAULT;
         NvM_SystemConfig.buzzer_enable = NVM_CFG_SYSTEM_BUZZER_DEFAULT;
         NvM_SystemConfig.theme = NVM_CFG_SYSTEM_THEME_DEFAULT;
-        NvM_SystemConfig.reserved = 0u;
+        NvM_SystemConfig.language = NVM_CFG_SYSTEM_LANGUAGE_DEFAULT;
 
         (void)NvM_WriteBlock(NVM_BLOCK_SYSTEM_CONFIG,
                              (const uint8_t *)&NvM_SystemConfig,
@@ -268,6 +268,11 @@ Std_ReturnType NvM_SetSystemConfig(const NvM_SystemConfigType *config)
     return NvM_WriteBlock(NVM_BLOCK_SYSTEM_CONFIG,
                           (const uint8_t *)&NvM_SystemConfig,
                           sizeof(NvM_SystemConfig));
+}
+
+uint8_t NvM_IsInitialized(void)
+{
+    return NvM_Initialized;
 }
 
 void NvM_WriteAll(void)

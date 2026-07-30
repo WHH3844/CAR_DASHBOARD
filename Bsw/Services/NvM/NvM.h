@@ -32,7 +32,8 @@ typedef struct
     uint8_t buzzer_enable;
     /* UI 主题预留字段，当前显示层暂未使用。 */
     uint8_t theme;
-    uint8_t reserved;
+    /* 0=中文，1=英文；沿用原 reserved 字节，块长度和 EEPROM 布局不变。 */
+    uint8_t language;
 } NvM_SystemConfigType;
 
 /*
@@ -60,6 +61,9 @@ const NvM_SystemConfigType *NvM_GetSystemConfig(void);
 
 /* 更新系统配置并立即写入 EEPROM。 */
 Std_ReturnType NvM_SetSystemConfig(const NvM_SystemConfigType *config);
+
+/* 返回 NvM 是否完成初始化，供 0x326 自检状态使用。 */
+uint8_t NvM_IsInitialized(void);
 
 /* 关机前保存所有需要持久化的 NvM RAM 镜像。 */
 void NvM_WriteAll(void);

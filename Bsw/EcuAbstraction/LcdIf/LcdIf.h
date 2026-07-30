@@ -32,6 +32,9 @@ void LcdIf_FillRect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uin
 /* 使用 Bresenham 算法画线，坐标可传入负值，函数内部会裁剪到屏幕范围内。 */
 void LcdIf_DrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color);
 
+/* 使用中点圆算法画圆；告警灯、状态图标等矢量元素可直接复用。 */
+void LcdIf_DrawCircle(int32_t center_x, int32_t center_y, int32_t radius, uint16_t color);
+
 /* 使用内置 5x7 点阵字体绘制 ASCII 文本，scale 为像素放大倍数。 */
 void LcdIf_DrawText(uint32_t x, uint32_t y, const char *text, uint8_t scale, uint16_t color);
 

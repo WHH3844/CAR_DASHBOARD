@@ -1,6 +1,7 @@
 ﻿#include "Dcm.h"
 
 #include "CanTp.h"
+#include "Can_Cfg.h"
 #include "Dcm_Cfg.h"
 #include "Dem.h"
 #include "NvM.h"
@@ -46,22 +47,19 @@ static uint16_t Dcm_ReadU16(const uint8_t *data)
     return (uint16_t)(((uint16_t)data[0] << 8u) | data[1]);
 }
 
-static void Dcm_WriteLeU16(uint8_t *data, uint16_t value)
+static void Dcm_WriteBeU16(uint8_t *data, uint16_t value)
 {
-    /*
-     * 本项目自定义 DID 数据区按 little-endian 返回，和内部 RTE/NvM 存储一致。
-     * SID 和 DID 头仍遵循 UDS 的 big-endian/固定格式。
-     */
-    data[0] = (uint8_t)(value & 0xFFu);
-    data[1] = (uint8_t)((value >> 8u) & 0xFFu);
+    /* UDS 多字节数值统一使用网络序/Big-Endian。 */
+    data[0] = (uint8_t)((value >> 8u) & 0xFFu);
+    data[1] = (uint8_t)(value & 0xFFu);
 }
 
-static void Dcm_WriteLeU32(uint8_t *data, uint32_t value)
+static void Dcm_WriteBeU32(uint8_t *data, uint32_t value)
 {
-    data[0] = (uint8_t)(value & 0xFFu);
-    data[1] = (uint8_t)((value >> 8u) & 0xFFu);
-    data[2] = (uint8_t)((value >> 16u) & 0xFFu);
-    data[3] = (uint8_t)((value >> 24u) & 0xFFu);
+    data[0] = (uint8_t)((value >> 24u) & 0xFFu);
+    data[1] = (uint8_t)((value >> 16u) & 0xFFu);
+    data[2] = (uint8_t)((value >> 8u) & 0xFFu);
+    data[3] = (uint8_t)(value & 0xFFu);
 }
 
 static void Dcm_HandleSessionControl(const uint8_t *payload, uint8_t length)
@@ -139,31 +137,54 @@ static void Dcm_HandleReadDid(const uint8_t *payload, uint8_t length)
     {
     case DCM_DID_BOOT_COUNTER:
         boot_info = NvM_GetBootInfo();
-        Dcm_WriteLeU32(&response[3], boot_info->boot_counter);
+        Dcm_WriteBeU32(&response[3], boot_info->boot_counter);
         Dcm_SendPositive(response, 7u);
         break;
 
     case DCM_DID_VEHICLE_SPEED:
-        Dcm_WriteLeU16(&response[3], dashboard.vehicle_speed_kph_x10);
+        if (dashboard.vehicle_speed_valid == 0u)
+        {
+            Dcm_SendNegative(DCM_SID_READ_DATA_BY_IDENTIFIER, DCM_NRC_CONDITIONS_NOT_CORRECT);
+            break;
+        }
+        Dcm_WriteBeU16(&response[3], dashboard.vehicle_speed_kph_x10);
         Dcm_SendPositive(response, 5u);
         break;
 
     case DCM_DID_ENGINE_RPM:
-        Dcm_WriteLeU16(&response[3], dashboard.engine_rpm);
+        if (dashboard.engine_rpm_valid == 0u)
+        {
+            Dcm_SendNegative(DCM_SID_READ_DATA_BY_IDENTIFIER, DCM_NRC_CONDITIONS_NOT_CORRECT);
+            break;
+        }
+        Dcm_WriteBeU16(&response[3], dashboard.engine_rpm);
         Dcm_SendPositive(response, 5u);
         break;
 
     case DCM_DID_BATTERY_VOLTAGE:
-        Dcm_WriteLeU16(&response[3], dashboard.battery_mv);
+        if (dashboard.battery_voltage_valid == 0u)
+        {
+            Dcm_SendNegative(DCM_SID_READ_DATA_BY_IDENTIFIER, DCM_NRC_CONDITIONS_NOT_CORRECT);
+            break;
+        }
+        Dcm_WriteBeU16(&response[3], dashboard.battery_mv);
         Dcm_SendPositive(response, 5u);
         break;
 
     case DCM_DID_RTC_TIME:
         (void)Rte_Read_RtcTime(&rtc_time, &rtc_valid);
-        response[3] = rtc_time.hour;
-        response[4] = rtc_time.minute;
-        response[5] = rtc_time.second;
-        response[6] = rtc_valid;
+        if (rtc_valid == 0u)
+        {
+            Dcm_SendNegative(DCM_SID_READ_DATA_BY_IDENTIFIER, DCM_NRC_CONDITIONS_NOT_CORRECT);
+            break;
+        }
+        /*
+         * 单帧响应可用 4 字节数据：year(BE)、month、date。
+         * 完整年月日时分秒需先实现 ISO-TP 多帧。
+         */
+        Dcm_WriteBeU16(&response[3], rtc_time.year);
+        response[5] = rtc_time.month;
+        response[6] = rtc_time.date;
         Dcm_SendPositive(response, 7u);
         break;
 
@@ -323,8 +344,6 @@ void Dcm_RxRequest(const uint8_t *payload, uint8_t length, uint16_t rx_can_id, u
 {
     uint8_t sid;
 
-    (void)rx_can_id;
-
     if ((payload == 0) || (length == 0u))
     {
         return;
@@ -332,6 +351,19 @@ void Dcm_RxRequest(const uint8_t *payload, uint8_t length, uint16_t rx_can_id, u
 
     sid = payload[0];
     Dcm_LastTesterActivityMs = tick_ms;
+
+    /*
+     * 功能寻址只允许只读服务和 TesterPresent。会话切换、清 DTC、
+     * ECU Reset 以及任何未来写/控制服务都不能通过 0x7DF 改变 ECU 状态。
+     */
+    if ((rx_can_id == CAN_ID_DIAG_FUNCTIONAL_REQ) &&
+        (sid != DCM_SID_READ_DATA_BY_IDENTIFIER) &&
+        (sid != DCM_SID_READ_DTC_INFORMATION) &&
+        (sid != DCM_SID_TESTER_PRESENT))
+    {
+        Dcm_SendNegative(sid, DCM_NRC_SERVICE_NOT_SUPPORTED);
+        return;
+    }
 
     /*
      * 每条有效请求都刷新 tester activity。

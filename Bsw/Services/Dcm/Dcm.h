@@ -19,8 +19,8 @@ void Dcm_MainFunction(uint32_t tick_ms);
 /*
  * 接收一条已经去掉 ISO-TP PCI 的 UDS 请求。
  *
- * payload[0] 是 SID，length 是 UDS payload 长度；rx_can_id 当前主要用于后续区分
- * 物理/功能寻址，第一版先保留参数。
+ * payload[0] 是 SID，length 是 UDS payload 长度；rx_can_id 用于执行
+ * 物理/功能寻址权限白名单。
  */
 void Dcm_RxRequest(const uint8_t *payload, uint8_t length, uint16_t rx_can_id, uint32_t tick_ms);
 

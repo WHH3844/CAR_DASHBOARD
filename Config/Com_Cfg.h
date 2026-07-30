@@ -24,4 +24,15 @@
 /* 0x321 电池电压暂按 0.1V/bit 转换，后续接真实 DBC 时只改这里。 */
 #define COM_CFG_BATTERY_RAW_TO_MV           100u
 
+/* v1.0 CAN 矩阵无效值。必须先判断无效值，再做物理量换算。 */
+#define COM_CFG_SPEED_RAW_MASK              0x1FFFu
+#define COM_CFG_SPEED_RAW_INVALID           0x1FFFu
+#define COM_CFG_U16_RAW_INVALID             0xFFFFu
+#define COM_CFG_U8_RAW_INVALID              0xFFu
+
+/* TPMS 本机显示报警阈值；只对有效的轮位信号生效。 */
+#define COM_CFG_TPMS_LOW_PRESSURE_X100      200u
+#define COM_CFG_TPMS_HIGH_PRESSURE_X100     350u
+#define COM_CFG_TPMS_HIGH_TEMPERATURE_C     85
+
 #endif /* COM_CFG_H */

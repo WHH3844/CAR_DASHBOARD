@@ -31,11 +31,20 @@
 #define CAN_ID_ICM_DIAGSTATUS_1000MS           0x326u
 #define CAN_ID_ICM_USERINPUT_EVENT             0x327u
 #define CAN_ID_ICM_LOGSTATUS_1000MS            0x328u
+#define CAN_ID_CDM_STATUS_500MS                 0x329u
 
-/* 关键输入报文超时阈值。0x321 周期 20ms，500ms 约等于漏 25 帧后判定丢失。 */
-#define CAN_CFG_EMS_POWERTRAIN_TIMEOUT_MS      500u
+/* v1.0 接口版本和节点地址。0x329 Byte0 使用 0x10 表示 v1.0。 */
+#define CAN_CFG_INTERFACE_VERSION_V1_0         0x10u
+#define CAN_CFG_ICM_NODE_ADDRESS               0x40u
+#define CAN_CFG_CDM_NODE_ADDRESS               0x41u
+
+/* 接收报文 freshness 阈值。关键动力报文 0x321 漏 5 帧后即判无效。 */
+#define CAN_CFG_EMS_POWERTRAIN_TIMEOUT_MS      100u
 #define CAN_CFG_BCM_BODYSTATUS_TIMEOUT_MS      500u
 #define CAN_CFG_TPMS_STATUS_TIMEOUT_MS         3000u
 #define CAN_CFG_CONFIG_TIMEOUT_MS              3000u
+#define CAN_CFG_CDM_STATUS_TIMEOUT_MS          1500u
+#define CAN_CFG_CDM_NM_TIMEOUT_MS              3000u
+#define CAN_CFG_CDM_ALIVE_STALL_FRAMES         3u
 
 #endif /* CAN_CFG_H */

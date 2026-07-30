@@ -16,14 +16,17 @@
 #define DCM_SESSION_PROGRAMMING             0x02u
 #define DCM_SESSION_EXTENDED                0x03u
 
-/* DID 定义来自诊断需求矩阵，第一版优先选择能放进单帧响应的数据。 */
-#define DCM_DID_BOOT_COUNTER                0xF180u
-#define DCM_DID_VEHICLE_SPEED               0xF181u
-#define DCM_DID_ENGINE_RPM                  0xF182u
-#define DCM_DID_BATTERY_VOLTAGE             0xF183u
-#define DCM_DID_RTC_TIME                    0xF184u
-#define DCM_DID_SDRAM_TEST_RESULT           0xF185u
-#define DCM_DID_HW_VERSION                  0xF187u
-#define DCM_DID_SW_VERSION                  0xF188u
+/*
+ * v1.0 DID 命名空间：
+ * F180-F19F ECU 身份；F200-F21F 运行数据；F220-F23F 配置；F240-F25F 测试。
+ */
+#define DCM_DID_HW_VERSION                  0xF191u
+#define DCM_DID_SW_VERSION                  0xF193u
+#define DCM_DID_BOOT_COUNTER                0xF200u
+#define DCM_DID_VEHICLE_SPEED               0xF201u
+#define DCM_DID_ENGINE_RPM                  0xF202u
+#define DCM_DID_BATTERY_VOLTAGE             0xF203u
+#define DCM_DID_RTC_TIME                    0xF204u
+#define DCM_DID_SDRAM_TEST_RESULT           0xF240u
 
 #endif /* DCM_CFG_H */

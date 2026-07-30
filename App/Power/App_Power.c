@@ -1,6 +1,7 @@
 ﻿#include "App_Power.h"
 
 #include "PowerIf.h"
+#include "Rte_Signal.h"
 #include "board_pins.h"
 
 /*
@@ -17,6 +18,7 @@ void App_Power_Init(void)
     App_Power_ReleaseSeen = 0u;
     App_Power_ShutdownRequested = 0u;
     App_Power_PressedStartMs = 0u;
+    (void)Rte_Write_ShutdownRequest(0u);
 }
 
 void App_Power_MainFunction(uint32_t tick_ms)
@@ -51,6 +53,7 @@ void App_Power_MainFunction(uint32_t tick_ms)
     if ((tick_ms - App_Power_PressedStartMs) >= POWERIF_SHUTDOWN_LONG_PRESS_MS)
     {
         App_Power_ShutdownRequested = 1u;
+        (void)Rte_Write_ShutdownRequest(1u);
     }
 }
 
@@ -62,4 +65,5 @@ uint8_t App_Power_IsShutdownRequested(void)
 void App_Power_ClearShutdownRequest(void)
 {
     App_Power_ShutdownRequested = 0u;
+    (void)Rte_Write_ShutdownRequest(0u);
 }

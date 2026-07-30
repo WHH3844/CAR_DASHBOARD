@@ -47,6 +47,16 @@ Std_ReturnType Dem_GetFirstDtcByStatusMask(uint8_t status_mask, Dem_DtcRecordTyp
 /* 统计 confirmedDTC 位已经置位的故障数量。 */
 uint8_t Dem_GetConfirmedDtcCount(void);
 
+/* 返回最近一次确认的本地 FaultId（1..DEM_EVENT_COUNT），无故障时为 0xFFFF。 */
+uint16_t Dem_GetLastFaultId(void);
+
+/* 返回指定事件的发生次数或当前 testFailed 状态。 */
+uint16_t Dem_GetOccurrenceCounter(Dem_EventIdType event_id);
+uint8_t Dem_IsEventFailed(Dem_EventIdType event_id);
+
+/* 返回 Dem 是否存在待持久化状态，供 0x326 NvMDirty 使用。 */
+uint8_t Dem_IsDirty(void);
+
 /* 清除所有 DTC 状态和发生次数，并立即写回 NvM。 */
 void Dem_ClearAllDtc(void);
 
